@@ -1,6 +1,6 @@
-import mongoose from 'mongoose';
-import Product from '../models/Product.js';
-import cloudinary from '../config/cloudinary.js';
+import mongoose from "mongoose";
+import Product from "../models/Product.js";
+import cloudinary from "../config/cloudinary.js";
 
 // ============================================================
 // HELPER: GENERATE SLUG
@@ -13,11 +13,11 @@ const generateSlug = (text) => {
         .toString()
         .toLowerCase()
         .trim()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w\-]+/g, '')
-        .replace(/\-\-+/g, '-')
-        .replace(/^-+/, '')
-        .replace(/-+$/, '');
+        .replace(/\s+/g, "-")
+        .replace(/[^\w\-]+/g, "")
+        .replace(/\-\-+/g, "-")
+        .replace(/^-+/, "")
+        .replace(/-+$/, "");
 };
 
 // ============================================================
@@ -28,7 +28,7 @@ const uploadStream = (buffer) => {
     return new Promise((resolve, reject) => {
         const stream = cloudinary.uploader.upload_stream(
             {
-                folder: 'new_print_products'
+                folder: "new_print_products",
             },
             (error, result) => {
                 if (error) {
@@ -44,9 +44,232 @@ const uploadStream = (buffer) => {
 };
 
 // ============================================================
+// HELPER: PARSE JSON FIELD
+// ============================================================
+
+const parseJsonField = (value, defaultValue) => {
+    if (value === undefined || value === null || value === "") {
+        return defaultValue;
+    }
+
+    if (typeof value !== "string") {
+        return value;
+    }
+
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+};
+
+// ============================================================
+// HELPER: PARSE BOOLEAN
+// ============================================================
+
+const parseBoolean = (value, defaultValue = false) => {
+    if (value === undefined || value === null) {
+        return defaultValue;
+    }
+
+    if (value === true || value === "true") {
+        return true;
+    }
+
+    if (value === false || value === "false") {
+        return false;
+    }
+
+    return defaultValue;
+};
+
+// ============================================================
+// VALIDATE GENERAL OPTIONS
+// ============================================================
+
+const validateOptions = (options) => {
+    if (!Array.isArray(options)) {
+        return "Product options must be an array";
+    }
+
+    for (const option of options) {
+        if (!option || !option.name?.trim()) {
+            return "Option name cannot be empty";
+        }
+
+        if (
+            !Array.isArray(option.values) ||
+            option.values.length === 0
+        ) {
+            return `Option "${option.name}" must have at least one value`;
+        }
+
+        const values = option.values
+            .map((value) => String(value).trim())
+            .filter(Boolean);
+
+        if (values.length === 0) {
+            return `Option "${option.name}" must have at least one value`;
+        }
+    }
+
+    return null;
+};
+
+// ============================================================
+// VALIDATE ORDER SELECTIONS
+// ============================================================
+
+const validateOrderSelections = (selections) => {
+    if (!Array.isArray(selections)) {
+        return "Order selections must be an array";
+    }
+
+    const names = new Set();
+
+    for (const selection of selections) {
+        if (!selection || !selection.name?.trim()) {
+            return "Order selection name cannot be empty";
+        }
+
+        const name = selection.name.trim();
+
+        if (names.has(name.toLowerCase())) {
+            return `Duplicate order selection "${name}"`;
+        }
+
+        names.add(name.toLowerCase());
+
+        if (
+            !Array.isArray(selection.values) ||
+            selection.values.length === 0
+        ) {
+            return `Order selection "${name}" must have at least one value`;
+        }
+
+        const values = selection.values
+            .map((value) => String(value).trim())
+            .filter(Boolean);
+
+        if (values.length === 0) {
+            return `Order selection "${name}" must have at least one value`;
+        }
+    }
+
+    return null;
+};
+
+// ============================================================
+// VALIDATE VARIANTS
+// ============================================================
+
+const validateVariants = (
+    variants,
+    orderSelections
+) => {
+    if (!Array.isArray(variants)) {
+        return "Variants must be an array";
+    }
+
+    if (variants.length === 0) {
+        return "At least one price variant is required";
+    }
+
+    const selectionDefinitions = new Map();
+
+    for (const selection of orderSelections) {
+        selectionDefinitions.set(
+            selection.name.trim(),
+            new Set(
+                selection.values.map((value) =>
+                    String(value).trim()
+                )
+            )
+        );
+    }
+
+    const combinationKeys = new Set();
+
+    for (const variant of variants) {
+        if (
+            !variant ||
+            !variant.selections ||
+            typeof variant.selections !== "object"
+        ) {
+            return "Each variant must contain selections";
+        }
+
+        // ------------------------------------------------------
+        // PRICE
+        // ------------------------------------------------------
+
+        const variantPrice = Number(variant.price);
+
+        if (
+            !Number.isFinite(variantPrice) ||
+            variantPrice < 0
+        ) {
+            return "Every variant must have a valid non-negative price";
+        }
+
+        // ------------------------------------------------------
+        // SELECTIONS
+        // ------------------------------------------------------
+
+        const selectionEntries =
+            Object.entries(variant.selections);
+
+        if (
+            selectionEntries.length !==
+            selectionDefinitions.size
+        ) {
+            return "Variant selections do not match the product order options";
+        }
+
+        for (const [name, value] of selectionEntries) {
+            if (!selectionDefinitions.has(name)) {
+                return `Unknown variant option "${name}"`;
+            }
+
+            const allowedValues =
+                selectionDefinitions.get(name);
+
+            if (!allowedValues.has(String(value).trim())) {
+                return `Invalid value "${value}" for option "${name}"`;
+            }
+        }
+
+        // ------------------------------------------------------
+        // DUPLICATE COMBINATION
+        // ------------------------------------------------------
+
+        const combinationKey =
+            selectionDefinitions.size > 0
+                ? Array.from(selectionDefinitions.keys())
+                      .sort()
+                      .map(
+                          (name) =>
+                              `${name}=${String(
+                                  variant.selections[name]
+                              ).trim()}`
+                      )
+                      .join("|")
+                : "";
+
+        if (combinationKeys.has(combinationKey)) {
+            return "Duplicate variant combination found";
+        }
+
+        combinationKeys.add(combinationKey);
+    }
+
+    return null;
+};
+
+// ============================================================
 // GET PRODUCTS
-// @route   GET /api/products
-// @access  Public
+// @route GET /api/products
+// @access Public
 // ============================================================
 
 export const getProducts = async (req, res) => {
@@ -55,38 +278,23 @@ export const getProducts = async (req, res) => {
             status,
             featured,
             category,
-            limit
+            limit,
         } = req.query;
 
         const filter = {};
-
-        // ------------------------------------------------------
-        // STATUS
-        // ------------------------------------------------------
 
         if (status) {
             filter.status = status;
         }
 
-        // ------------------------------------------------------
-        // FEATURED
-        // ------------------------------------------------------
-
         if (featured !== undefined) {
-            filter.featured = featured === "true";
+            filter.featured =
+                featured === "true";
         }
-
-        // ------------------------------------------------------
-        // CATEGORY
-        // ------------------------------------------------------
 
         if (category) {
             filter.category = category;
         }
-
-        // ------------------------------------------------------
-        // QUERY
-        // ------------------------------------------------------
 
         let query = Product.find(filter)
             .populate(
@@ -94,12 +302,8 @@ export const getProducts = async (req, res) => {
                 "name slug status"
             )
             .sort({
-                createdAt: -1
+                createdAt: -1,
             });
-
-        // ------------------------------------------------------
-        // LIMIT
-        // ------------------------------------------------------
 
         if (limit) {
             const parsedLimit =
@@ -117,17 +321,11 @@ export const getProducts = async (req, res) => {
 
         const products = await query;
 
-        // ------------------------------------------------------
-        // RESPONSE
-        // ------------------------------------------------------
-
         return res.status(200).json({
             success: true,
-            products
+            products,
         });
-
     } catch (error) {
-
         console.error(
             "GET PRODUCTS ERROR:",
             error
@@ -137,15 +335,15 @@ export const getProducts = async (req, res) => {
             success: false,
             message:
                 error.message ||
-                "Failed to fetch products"
+                "Failed to fetch products",
         });
     }
 };
 
 // ============================================================
-// GET SINGLE PRODUCT (UPDATED FOR SLUG SUPPORT)
-// @route   GET /api/products/:id
-// @access  Public
+// GET SINGLE PRODUCT
+// @route GET /api/products/:id
+// @access Public
 // ============================================================
 
 export const getProduct = async (req, res) => {
@@ -154,36 +352,41 @@ export const getProduct = async (req, res) => {
 
         let product;
 
-        // 1. If identifier is a valid MongoDB ObjectId, try to find by _id first.
-        if (mongoose.Types.ObjectId.isValid(identifier)) {
-            product = await Product.findById(identifier).populate(
-                "category",
-                "name slug"
-            );
+        if (
+            mongoose.Types.ObjectId.isValid(
+                identifier
+            )
+        ) {
+            product =
+                await Product.findById(
+                    identifier
+                ).populate(
+                    "category",
+                    "name slug status"
+                );
         }
 
-        // 2. If not found by ID (or not a valid ID), try finding by slug.
         if (!product) {
-            product = await Product.findOne({
-                slug: identifier.toLowerCase()
-            }).populate(
-                "category",
-                "name slug"
-            );
+            product =
+                await Product.findOne({
+                    slug: identifier.toLowerCase(),
+                }).populate(
+                    "category",
+                    "name slug status"
+                );
         }
 
         if (!product) {
             return res.status(404).json({
                 success: false,
-                message: "Product not found"
+                message: "Product not found",
             });
         }
 
         return res.status(200).json({
             success: true,
-            product
+            product,
         });
-
     } catch (error) {
         console.error(
             "GET PRODUCT ERROR:",
@@ -194,15 +397,15 @@ export const getProduct = async (req, res) => {
             success: false,
             message:
                 error.message ||
-                "Failed to fetch product"
+                "Failed to fetch product",
         });
     }
 };
 
 // ============================================================
 // CREATE PRODUCT
-// @route   POST /api/products
-// @access  Admin Only
+// @route POST /api/products
+// @access Admin
 // ============================================================
 
 export const createProduct = async (req, res) => {
@@ -211,26 +414,28 @@ export const createProduct = async (req, res) => {
             category,
             name,
             description = "",
-            status = "active"
+            status = "active",
         } = req.body;
 
         let {
             slug,
             price,
+            pricingType = "fixed",
             featured,
             options,
-            orderSelections 
+            orderSelections,
+            variants,
         } = req.body;
 
-        // ------------------------------------------------------
-        // REQUIRED FIELDS
-        // ------------------------------------------------------
+        // ====================================================
+        // REQUIRED
+        // ====================================================
 
         if (!category) {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Product category is required"
+                    "Product category is required",
             });
         }
 
@@ -238,13 +443,28 @@ export const createProduct = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Product name is required"
+                    "Product name is required",
             });
         }
 
-        // ------------------------------------------------------
+        // ====================================================
+        // PRICING TYPE
+        // ====================================================
+
+        if (
+            pricingType !== "fixed" &&
+            pricingType !== "variants"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Pricing type must be either "fixed" or "variants"',
+            });
+        }
+
+        // ====================================================
         // SLUG
-        // ------------------------------------------------------
+        // ====================================================
 
         slug = slug?.trim()
             ? generateSlug(slug)
@@ -254,179 +474,184 @@ export const createProduct = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Unable to generate product slug"
+                    "Unable to generate product slug",
             });
         }
 
         const existingProduct =
-            await Product.findOne({
-                slug
-            });
+            await Product.findOne({ slug });
 
         if (existingProduct) {
             return res.status(409).json({
                 success: false,
                 message:
-                    "A product with this slug already exists"
+                    "A product with this slug already exists",
             });
         }
 
-        // ------------------------------------------------------
-        // PRICE
-        // ------------------------------------------------------
+        // ====================================================
+        // PARSE OPTIONS
+        // ====================================================
 
-        let parsedPrice;
-
-        if (
-            price !== undefined &&
-            price !== ""
-        ) {
-            parsedPrice = Number(price);
-
-            if (Number.isNaN(parsedPrice)) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Price must be a valid number"
-                });
-            }
-
-            if (parsedPrice < 0) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Price cannot be negative"
-                });
-            }
-        }
-
-        // ------------------------------------------------------
-        // FEATURED
-        // ------------------------------------------------------
-
-        const parsedFeatured =
-            featured === true ||
-            featured === "true";
-
-        // ------------------------------------------------------
-        // OPTIONS (Existing Info)
-        // ------------------------------------------------------
-
-        let parsedOptions = [];
-
-        if (options) {
-            try {
-
-                parsedOptions =
-                    typeof options === "string"
-                        ? JSON.parse(options)
-                        : options;
-
-            } catch (error) {
-
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Invalid product options"
-                });
-            }
-        }
+        const parsedOptions =
+            parseJsonField(options, []);
 
         if (!Array.isArray(parsedOptions)) {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Product options must be an array"
+                    "Product options must be an array",
             });
         }
 
-        // ------------------------------------------------------
-        // VALIDATE OPTIONS
-        // ------------------------------------------------------
+        const optionsError =
+            validateOptions(parsedOptions);
 
-        for (const option of parsedOptions) {
-
-            if (!option.name?.trim()) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Option name cannot be empty"
-                });
-            }
-
-            if (
-                !Array.isArray(option.values) ||
-                option.values.length === 0
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        `Option "${option.name}" must have at least one value`
-                });
-            }
-        }
-
-        // ------------------------------------------------------
-        // ORDER SELECTIONS
-        // ------------------------------------------------------
-        
-        let parsedOrderSelections = [];
-
-        if (orderSelections) {
-            try {
-                parsedOrderSelections =
-                    typeof orderSelections === "string"
-                        ? JSON.parse(orderSelections)
-                        : orderSelections;
-            } catch (error) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid order selections"
-                });
-            }
-        }
-
-        if (!Array.isArray(parsedOrderSelections)) {
+        if (optionsError) {
             return res.status(400).json({
                 success: false,
-                message: "Order selections must be an array"
+                message: optionsError,
             });
         }
 
-        for (const sel of parsedOrderSelections) {
-            if (!sel.name?.trim()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Order selection name cannot be empty"
-                });
-            }
+        // ====================================================
+        // PARSE ORDER SELECTIONS
+        // ====================================================
 
+        const parsedOrderSelections =
+            parseJsonField(
+                orderSelections,
+                []
+            );
+
+        if (
+            !Array.isArray(
+                parsedOrderSelections
+            )
+        ) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    "Order selections must be an array",
+            });
+        }
+
+        const orderSelectionError =
+            validateOrderSelections(
+                parsedOrderSelections
+            );
+
+        if (orderSelectionError) {
+            return res.status(400).json({
+                success: false,
+                message:
+                    orderSelectionError,
+            });
+        }
+
+        // ====================================================
+        // PRICING
+        // ====================================================
+
+        let parsedPrice = null;
+        let parsedVariants = [];
+
+        if (pricingType === "fixed") {
             if (
-                !Array.isArray(sel.values) ||
-                sel.values.length === 0
+                price === undefined ||
+                price === ""
             ) {
                 return res.status(400).json({
                     success: false,
-                    message: `Order selection "${sel.name}" must have at least one value`
+                    message:
+                        "Product price is required for fixed pricing",
+                });
+            }
+
+            parsedPrice = Number(price);
+
+            if (
+                !Number.isFinite(parsedPrice) ||
+                parsedPrice < 0
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Price must be a valid non-negative number",
+                });
+            }
+
+            // Fixed products must not have variants.
+            parsedVariants = [];
+        }
+
+        if (pricingType === "variants") {
+            // Variant pricing does not use base price.
+            parsedPrice = null;
+
+            parsedVariants =
+                parseJsonField(
+                    variants,
+                    []
+                );
+
+            if (
+                !Array.isArray(
+                    parsedVariants
+                )
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Variants must be an array",
+                });
+            }
+
+            const variantError =
+                validateVariants(
+                    parsedVariants,
+                    parsedOrderSelections
+                );
+
+            if (variantError) {
+                return res.status(400).json({
+                    success: false,
+                    message: variantError,
                 });
             }
         }
 
-        // ------------------------------------------------------
-        // UPLOAD IMAGES
-        // ------------------------------------------------------
+        // ====================================================
+        // FEATURED
+        // ====================================================
+
+        const parsedFeatured =
+            parseBoolean(
+                featured,
+                false
+            );
+
+        // ====================================================
+        // IMAGES
+        // ====================================================
 
         const imageUrls = [];
 
         if (req.files?.length) {
+            if (req.files.length > 10) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Maximum 10 images allowed",
+                });
+            }
 
             for (const file of req.files) {
-
                 if (!file.buffer) {
                     return res.status(400).json({
                         success: false,
                         message:
-                            "Invalid image upload"
+                            "Invalid image upload",
                     });
                 }
 
@@ -439,9 +664,9 @@ export const createProduct = async (req, res) => {
             }
         }
 
-        // ------------------------------------------------------
+        // ====================================================
         // CREATE
-        // ------------------------------------------------------
+        // ====================================================
 
         const product =
             await Product.create({
@@ -449,34 +674,44 @@ export const createProduct = async (req, res) => {
                 name: name.trim(),
                 slug,
                 description:
-                    description.trim(),
+                    description?.trim() || "",
+
+                pricingType,
                 price: parsedPrice,
+
                 images: imageUrls,
+
                 options: parsedOptions,
-                orderSelections: parsedOrderSelections,
+
+                orderSelections:
+                    parsedOrderSelections,
+
+                variants:
+                    parsedVariants,
+
                 status,
-                featured: parsedFeatured
+                featured:
+                    parsedFeatured,
             });
 
-        // ------------------------------------------------------
-        // POPULATE CATEGORY
-        // ------------------------------------------------------
+        // ====================================================
+        // POPULATE
+        // ====================================================
 
         const populatedProduct =
-            await Product
-                .findById(product._id)
-                .populate(
-                    "category",
-                    "name slug status"
-                );
+            await Product.findById(
+                product._id
+            ).populate(
+                "category",
+                "name slug status"
+            );
 
         return res.status(201).json({
             success: true,
-            product: populatedProduct
+            product:
+                populatedProduct,
         });
-
     } catch (error) {
-
         console.error(
             "CREATE PRODUCT ERROR:",
             error
@@ -496,7 +731,7 @@ export const createProduct = async (req, res) => {
                             (err) =>
                                 err.message
                         )
-                        .join(", ")
+                        .join(", "),
             });
         }
 
@@ -504,7 +739,7 @@ export const createProduct = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message:
-                    "A product with this slug already exists"
+                    "A product with this slug already exists",
             });
         }
 
@@ -512,252 +747,341 @@ export const createProduct = async (req, res) => {
             success: false,
             message:
                 error.message ||
-                "Failed to create product"
+                "Failed to create product",
         });
     }
 };
 
 // ============================================================
 // UPDATE PRODUCT
-// @route   PUT /api/products/:id
-// @access  Admin Only
+// @route PUT /api/products/:id
+// @access Admin
 // ============================================================
 
 export const updateProduct = async (req, res) => {
     try {
+        const product =
+            await Product.findById(
+                req.params.id
+            );
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message:
+                    "Product not found",
+            });
+        }
+
         const {
             category,
             name,
             description,
-            status
+            status,
         } = req.body;
 
         let {
             slug,
             price,
+            pricingType,
             featured,
             options,
-            orderSelections, 
-            existingImages
+            orderSelections,
+            variants,
+            existingImages,
         } = req.body;
 
-        let product =
-            await Product.findById(req.params.id);
+        // ====================================================
+        // CATEGORY
+        // ====================================================
 
-        if (!product) {
-            return res.status(404).json({
+        const finalCategory =
+            category || product.category;
+
+        // ====================================================
+        // NAME
+        // ====================================================
+
+        const finalName =
+            name?.trim() ||
+            product.name;
+
+        // ====================================================
+        // SLUG
+        // ====================================================
+
+        let finalSlug =
+            product.slug;
+
+        if (slug !== undefined) {
+            finalSlug =
+                generateSlug(slug);
+        } else if (
+            name &&
+            name.trim() !== product.name
+        ) {
+            finalSlug =
+                generateSlug(name);
+        }
+
+        if (!finalSlug) {
+            return res.status(400).json({
                 success: false,
-                message: "Product not found"
+                message:
+                    "Unable to generate product slug",
             });
         }
 
-        // ------------------------------------------------------
-        // SLUG
-        // ------------------------------------------------------
+        const slugConflict =
+            await Product.findOne({
+                slug: finalSlug,
+                _id: {
+                    $ne:
+                        req.params.id,
+                },
+            });
 
-        if (slug) {
-            slug = generateSlug(slug);
-
-            const slugConflict =
-                await Product.findOne({
-                    slug,
-                    _id: {
-                        $ne: req.params.id
-                    }
-                });
-
-            if (slugConflict) {
-                return res.status(409).json({
-                    success: false,
-                    message:
-                        "Another product uses this slug"
-                });
-            }
-        } else if (
-            name &&
-            name !== product.name
-        ) {
-            slug = generateSlug(name);
-
-            const slugConflict =
-                await Product.findOne({
-                    slug,
-                    _id: {
-                        $ne: req.params.id
-                    }
-                });
-
-            if (slugConflict) {
-                return res.status(409).json({
-                    success: false,
-                    message:
-                        "Auto-generated slug conflicts"
-                });
-            }
-        } else {
-            slug = product.slug;
+        if (slugConflict) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Another product uses this slug",
+            });
         }
 
-        // ------------------------------------------------------
-        // PRICE
-        // ------------------------------------------------------
+        // ====================================================
+        // PRICING TYPE
+        // ====================================================
 
-        let parsedPrice = product.price;
+        const finalPricingType =
+            pricingType ||
+            product.pricingType ||
+            "fixed";
 
         if (
-            price !== undefined &&
-            price !== ""
+            finalPricingType !== "fixed" &&
+            finalPricingType !== "variants"
         ) {
-            parsedPrice = Number(price);
-
-            if (Number.isNaN(parsedPrice)) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Price must be a valid number"
-                });
-            }
-
-            if (parsedPrice < 0) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Price cannot be negative"
-                });
-            }
+            return res.status(400).json({
+                success: false,
+                message:
+                    'Pricing type must be either "fixed" or "variants"',
+            });
         }
 
-        // ------------------------------------------------------
-        // FEATURED
-        // ------------------------------------------------------
-
-        let parsedFeatured =
-            product.featured;
-
-        if (featured !== undefined) {
-            parsedFeatured =
-                featured === true ||
-                featured === "true";
-        }
-
-        // ------------------------------------------------------
-        // OPTIONS (Existing Info)
-        // ------------------------------------------------------
+        // ====================================================
+        // OPTIONS
+        // ====================================================
 
         let parsedOptions =
             product.options || [];
 
         if (options !== undefined) {
-            try {
-                parsedOptions =
-                    typeof options === "string"
-                        ? JSON.parse(options)
-                        : options;
-            } catch {
+            parsedOptions =
+                parseJsonField(
+                    options,
+                    null
+                );
+
+            if (!Array.isArray(parsedOptions)) {
                 return res.status(400).json({
                     success: false,
                     message:
-                        "Invalid product options"
+                        "Product options must be an array",
                 });
             }
         }
 
-        if (!Array.isArray(parsedOptions)) {
+        const optionsError =
+            validateOptions(
+                parsedOptions
+            );
+
+        if (optionsError) {
+            return res.status(400).json({
+                success: false,
+                message: optionsError,
+            });
+        }
+
+        // ====================================================
+        // ORDER SELECTIONS
+        // ====================================================
+
+        let parsedOrderSelections =
+            product.orderSelections ||
+            [];
+
+        if (
+            orderSelections !== undefined
+        ) {
+            parsedOrderSelections =
+                parseJsonField(
+                    orderSelections,
+                    null
+                );
+
+            if (
+                !Array.isArray(
+                    parsedOrderSelections
+                )
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message:
+                        "Order selections must be an array",
+                });
+            }
+        }
+
+        const orderSelectionError =
+            validateOrderSelections(
+                parsedOrderSelections
+            );
+
+        if (orderSelectionError) {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Product options must be an array"
+                    orderSelectionError,
             });
         }
 
-        // ------------------------------------------------------
-        // VALIDATE OPTIONS
-        // ------------------------------------------------------
+        // ====================================================
+        // PRICING
+        // ====================================================
 
-        for (const option of parsedOptions) {
-            if (!option.name?.trim()) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Option name cannot be empty"
-                });
+        let finalPrice =
+            product.price ?? null;
+
+        let finalVariants =
+            product.variants || [];
+
+        if (
+            finalPricingType === "fixed"
+        ) {
+            if (
+                price !== undefined &&
+                price !== ""
+            ) {
+                finalPrice =
+                    Number(price);
             }
 
             if (
-                !Array.isArray(option.values) ||
-                option.values.length === 0
+                finalPrice === null ||
+                !Number.isFinite(
+                    finalPrice
+                ) ||
+                finalPrice < 0
             ) {
                 return res.status(400).json({
                     success: false,
                     message:
-                        `Option "${option.name}" must have at least one value`
+                        "Product price is required for fixed pricing",
                 });
             }
+
+            // Important:
+            // Remove old variants when switching
+            // back to fixed pricing.
+            finalVariants = [];
         }
 
-        // ------------------------------------------------------
-        // ORDER SELECTIONS 
-        // ------------------------------------------------------
+        if (
+            finalPricingType ===
+            "variants"
+        ) {
+            finalPrice = null;
 
-        let parsedOrderSelections = product.orderSelections || [];
-
-        if (orderSelections !== undefined) {
-            try {
-                parsedOrderSelections =
-                    typeof orderSelections === "string"
-                        ? JSON.parse(orderSelections)
-                        : orderSelections;
-            } catch {
-                return res.status(400).json({
-                    success: false,
-                    message: "Invalid order selections"
-                });
-            }
-        }
-
-        if (!Array.isArray(parsedOrderSelections)) {
-            return res.status(400).json({
-                success: false,
-                message: "Order selections must be an array"
-            });
-        }
-
-        for (const sel of parsedOrderSelections) {
-            if (!sel.name?.trim()) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Order selection name cannot be empty"
-                });
+            if (
+                variants !== undefined
+            ) {
+                finalVariants =
+                    parseJsonField(
+                        variants,
+                        null
+                    );
             }
 
             if (
-                !Array.isArray(sel.values) ||
-                sel.values.length === 0
+                !Array.isArray(
+                    finalVariants
+                )
             ) {
                 return res.status(400).json({
                     success: false,
-                    message: `Order selection "${sel.name}" must have at least one value`
+                    message:
+                        "Variants must be an array",
+                });
+            }
+
+            const variantError =
+                validateVariants(
+                    finalVariants,
+                    parsedOrderSelections
+                );
+
+            if (variantError) {
+                return res.status(400).json({
+                    success: false,
+                    message: variantError,
                 });
             }
         }
 
-        // ------------------------------------------------------
-        // EXISTING IMAGES
-        // ------------------------------------------------------
+        // ====================================================
+        // FEATURED
+        // ====================================================
 
-        let finalImages = [];
+        let finalFeatured =
+            product.featured;
 
-        if (existingImages) {
-            finalImages = Array.isArray(existingImages)
-                ? existingImages
-                : [existingImages];
-        } else {
-            finalImages = product.images || [];
+        if (
+            featured !== undefined
+        ) {
+            finalFeatured =
+                parseBoolean(
+                    featured,
+                    product.featured
+                );
         }
 
-        // ------------------------------------------------------
+        // ====================================================
+        // IMAGES
+        // ====================================================
+
+        let finalImages =
+            product.images || [];
+
+        if (
+            existingImages !== undefined
+        ) {
+            const parsedExistingImages =
+                parseJsonField(
+                    existingImages,
+                    null
+                );
+
+            if (
+                Array.isArray(
+                    parsedExistingImages
+                )
+            ) {
+                finalImages =
+                    parsedExistingImages;
+            } else if (
+                typeof existingImages ===
+                "string"
+            ) {
+                finalImages =
+                    [existingImages];
+            }
+        }
+
+        // ====================================================
         // NEW IMAGES
-        // ------------------------------------------------------
+        // ====================================================
 
         if (
             req.files &&
@@ -768,7 +1092,7 @@ export const updateProduct = async (req, res) => {
                     return res.status(400).json({
                         success: false,
                         message:
-                            "Invalid image upload"
+                            "Invalid image upload",
                     });
                 }
 
@@ -781,40 +1105,67 @@ export const updateProduct = async (req, res) => {
             }
         }
 
-        // ------------------------------------------------------
-        // IMAGE LIMIT
-        // ------------------------------------------------------
-
-        if (finalImages.length > 10) {
+        if (
+            finalImages.length > 10
+        ) {
             return res.status(400).json({
                 success: false,
                 message:
-                    "Maximum 10 images allowed"
+                    "Maximum 10 images allowed",
             });
         }
 
-        // ------------------------------------------------------
+        // ====================================================
         // UPDATE
-        // ------------------------------------------------------
+        // ====================================================
 
-        product =
+        const updatedProduct =
             await Product.findByIdAndUpdate(
                 req.params.id,
                 {
-                    category,
-                    name,
-                    slug,
-                    description,
-                    price: parsedPrice,
-                    status,
-                    featured: parsedFeatured,
-                    options: parsedOptions,
-                    orderSelections: parsedOrderSelections, 
-                    images: finalImages
+                    category:
+                        finalCategory,
+
+                    name:
+                        finalName,
+
+                    slug:
+                        finalSlug,
+
+                    description:
+                        description !==
+                        undefined
+                            ? description.trim()
+                            : product.description,
+
+                    pricingType:
+                        finalPricingType,
+
+                    price:
+                        finalPrice,
+
+                    variants:
+                        finalVariants,
+
+                    status:
+                        status ||
+                        product.status,
+
+                    featured:
+                        finalFeatured,
+
+                    options:
+                        parsedOptions,
+
+                    orderSelections:
+                        parsedOrderSelections,
+
+                    images:
+                        finalImages,
                 },
                 {
                     new: true,
-                    runValidators: true
+                    runValidators: true,
                 }
             ).populate(
                 "category",
@@ -823,19 +1174,23 @@ export const updateProduct = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            product
+            product:
+                updatedProduct,
         });
-
     } catch (error) {
         console.error(
             "UPDATE PRODUCT ERROR:",
             error
         );
 
-        if (error.name === "CastError") {
+        if (
+            error.name ===
+            "CastError"
+        ) {
             return res.status(404).json({
                 success: false,
-                message: "Product not found"
+                message:
+                    "Product not found",
             });
         }
 
@@ -853,7 +1208,7 @@ export const updateProduct = async (req, res) => {
                             (err) =>
                                 err.message
                         )
-                        .join(", ")
+                        .join(", "),
             });
         }
 
@@ -861,7 +1216,7 @@ export const updateProduct = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message:
-                    "Another product uses this slug"
+                    "Another product uses this slug",
             });
         }
 
@@ -869,18 +1224,21 @@ export const updateProduct = async (req, res) => {
             success: false,
             message:
                 error.message ||
-                "Failed to update product"
+                "Failed to update product",
         });
     }
 };
 
 // ============================================================
 // DELETE PRODUCT
-// @route   DELETE /api/products/:id
-// @access  Admin Only
+// @route DELETE /api/products/:id
+// @access Admin
 // ============================================================
 
-export const deleteProduct = async (req, res) => {
+export const deleteProduct = async (
+    req,
+    res
+) => {
     try {
         const product =
             await Product.findById(
@@ -890,7 +1248,8 @@ export const deleteProduct = async (req, res) => {
         if (!product) {
             return res.status(404).json({
                 success: false,
-                message: "Product not found"
+                message:
+                    "Product not found",
             });
         }
 
@@ -899,19 +1258,22 @@ export const deleteProduct = async (req, res) => {
         return res.status(200).json({
             success: true,
             message:
-                "Product deleted successfully"
+                "Product deleted successfully",
         });
-
     } catch (error) {
         console.error(
             "DELETE PRODUCT ERROR:",
             error
         );
 
-        if (error.name === "CastError") {
+        if (
+            error.name ===
+            "CastError"
+        ) {
             return res.status(404).json({
                 success: false,
-                message: "Product not found"
+                message:
+                    "Product not found",
             });
         }
 
@@ -919,7 +1281,7 @@ export const deleteProduct = async (req, res) => {
             success: false,
             message:
                 error.message ||
-                "Failed to delete product"
+                "Failed to delete product",
         });
     }
 };

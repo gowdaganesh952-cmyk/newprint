@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApi, ApiError } from "@/app/lib/api";
+
 import {
   Category,
+  Product,
   ProductOption,
   ProductOrderSelection,
-  Product,
+  ProductPricingType,
+  ProductVariant,
 } from "./types";
 
 interface ImagePreview {
@@ -19,22 +22,111 @@ interface ProductFormProps {
   initialData?: Product;
 }
 
-export default function ProductForm({ initialData }: ProductFormProps) {
+// ============================================================
+// HELPER
+// Generate every possible combination of order selections.
+// Example:
+//
+// Size: S, M
+// Color: Black, White
+//
+// Generates:
+//
+// S + Black
+// S + White
+// M + Black
+// M + White
+// ============================================================
+
+function generateVariantCombinations(
+  selections: ProductOrderSelection[]
+): Record<string, string>[] {
+  const validSelections = selections.filter(
+    (selection) =>
+      selection.name.trim() &&
+      selection.values.length > 0
+  );
+
+  if (validSelections.length === 0) {
+    return [];
+  }
+
+  let combinations: Record<string, string>[] = [{}];
+
+  for (const selection of validSelections) {
+    const next: Record<string, string>[] = [];
+
+    for (const combination of combinations) {
+      for (const value of selection.values) {
+        next.push({
+          ...combination,
+          [selection.name.trim()]: value,
+        });
+      }
+    }
+
+    combinations = next;
+  }
+
+  return combinations;
+}
+
+// ============================================================
+// COMPARE SELECTIONS
+// ============================================================
+
+function selectionsMatch(
+  first: Record<string, string>,
+  second: Record<string, string>
+) {
+  const firstKeys = Object.keys(first);
+  const secondKeys = Object.keys(second);
+
+  if (firstKeys.length !== secondKeys.length) {
+    return false;
+  }
+
+  return firstKeys.every(
+    (key) => first[key] === second[key]
+  );
+}
+
+// ============================================================
+// FORMAT COMBINATION
+// ============================================================
+
+function formatCombination(
+  selections: Record<string, string>
+) {
+  return Object.entries(selections)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join(" • ");
+}
+
+// ============================================================
+// COMPONENT
+// ============================================================
+
+export default function ProductForm({
+  initialData,
+}: ProductFormProps) {
   const router = useRouter();
   const api = useApi();
+
   const isEditing = !!initialData;
 
-  // =========================================================
+  // ==========================================================
   // CATEGORY
-  // =========================================================
+  // ==========================================================
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [loadingCategories, setLoadingCategories] = useState(true);
+  const [loadingCategories, setLoadingCategories] =
+    useState(true);
   const [categoryError, setCategoryError] = useState(false);
 
-  // =========================================================
-  // BASIC PRODUCT INFORMATION
-  // =========================================================
+  // ==========================================================
+  // BASIC INFORMATION
+  // ==========================================================
 
   const [categoryId, setCategoryId] = useState(
     typeof initialData?.category === "object"
@@ -42,9 +134,13 @@ export default function ProductForm({ initialData }: ProductFormProps) {
       : initialData?.category || ""
   );
 
-  const [name, setName] = useState(initialData?.name || "");
+  const [name, setName] = useState(
+    initialData?.name || ""
+  );
 
-  const [slug, setSlug] = useState(initialData?.slug || "");
+  const [slug, setSlug] = useState(
+    initialData?.slug || ""
+  );
 
   const [isSlugManuallyEdited, setIsSlugManuallyEdited] =
     useState(isEditing);
@@ -53,23 +149,46 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     initialData?.description || ""
   );
 
+  // ==========================================================
+  // PRICING
+  // ==========================================================
+
+  const [pricingType, setPricingType] =
+    useState<ProductPricingType>(
+      initialData?.pricingType || "fixed"
+    );
+
   const [price, setPrice] = useState<string>(
-    initialData?.price !== undefined
+    initialData?.price !== undefined &&
+      initialData?.price !== null
       ? String(initialData.price)
       : ""
   );
 
-  const [status, setStatus] = useState<"active" | "inactive">(
-    initialData?.status || "active"
+  const [variants, setVariants] = useState<
+    ProductVariant[]
+  >(
+    initialData?.variants?.map((variant) => ({
+      ...variant,
+      selections: { ...variant.selections },
+    })) || []
   );
+
+  // ==========================================================
+  // STATUS
+  // ==========================================================
+
+  const [status, setStatus] = useState<
+    "active" | "inactive"
+  >(initialData?.status || "active");
 
   const [featured, setFeatured] = useState(
     initialData?.featured || false
   );
 
-  // =========================================================
+  // ==========================================================
   // IMAGES
-  // =========================================================
+  // ==========================================================
 
   const [images, setImages] = useState<ImagePreview[]>(
     initialData?.images?.map((url) => ({
@@ -77,37 +196,20 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     })) || []
   );
 
-  // =========================================================
+  // ==========================================================
   // PRODUCT OPTIONS
-  // These are informational/product properties.
-  // Example:
-  // Material -> Cotton, Polyester
-  // =========================================================
+  // ==========================================================
 
   const [options, setOptions] = useState<ProductOption[]>(
     initialData?.options || []
   );
 
-  const [newOptionValue, setNewOptionValue] = useState<{
-    [key: number]: string;
-  }>({});
+  const [newOptionValue, setNewOptionValue] =
+    useState<Record<number, string>>({});
 
-  // =========================================================
-  // ORDER-TIME OPTIONS
-  //
-  // These are CUSTOMER selections before Add to Cart.
-  //
-  // Example:
-  //
-  // T-Shirt:
-  // Size -> S, M, L, XL
-  //
-  // Mug:
-  // Capacity -> 250 ML, 350 ML, 500 ML
-  //
-  // Keychain:
-  // No order-time options
-  // =========================================================
+  // ==========================================================
+  // CUSTOMER ORDER OPTIONS
+  // ==========================================================
 
   const [orderSelections, setOrderSelections] =
     useState<ProductOrderSelection[]>(
@@ -115,19 +217,21 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     );
 
   const [newOrderSelectionValue, setNewOrderSelectionValue] =
-    useState<{ [key: number]: string }>({});
+    useState<Record<number, string>>({});
 
-  // =========================================================
+  // ==========================================================
   // FORM
-  // =========================================================
+  // ==========================================================
 
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(
+    null
+  );
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // =========================================================
+  // ==========================================================
   // LOAD CATEGORIES
-  // =========================================================
+  // ==========================================================
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -148,7 +252,11 @@ export default function ProductForm({ initialData }: ProductFormProps) {
           );
         }
       } catch (error) {
-        console.error("Failed to load categories:", error);
+        console.error(
+          "Failed to load categories:",
+          error
+        );
+
         setCategoryError(true);
       } finally {
         setLoadingCategories(false);
@@ -156,11 +264,11 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     };
 
     fetchCategories();
-  }, []);
+  }, [api]);
 
-  // =========================================================
+  // ==========================================================
   // AUTO SLUG
-  // =========================================================
+  // ==========================================================
 
   useEffect(() => {
     if (!isSlugManuallyEdited && name) {
@@ -174,9 +282,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     }
   }, [name, isSlugManuallyEdited]);
 
-  // =========================================================
+  // ==========================================================
   // IMAGE FUNCTIONS
-  // =========================================================
+  // ==========================================================
 
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -190,17 +298,18 @@ export default function ProductForm({ initialData }: ProductFormProps) {
       return;
     }
 
-    const newImages: ImagePreview[] = selectedFiles.map(
-      (file) => ({
+    const newImages: ImagePreview[] =
+      selectedFiles.map((file) => ({
         file,
         previewUrl: URL.createObjectURL(file),
-      })
-    );
+      }));
 
     setImages((previous) => [
       ...previous,
       ...newImages,
     ]);
+
+    e.target.value = "";
   };
 
   const removeImage = (index: number) => {
@@ -209,7 +318,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     }
 
     setImages((previous) =>
-      previous.filter((_, imageIndex) => imageIndex !== index)
+      previous.filter(
+        (_, imageIndex) => imageIndex !== index
+      )
     );
   };
 
@@ -238,19 +349,20 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         ? index - 1
         : index + 1;
 
-    const temporary = updatedImages[index];
-
-    updatedImages[index] =
-      updatedImages[targetIndex];
-
-    updatedImages[targetIndex] = temporary;
+    [
+      updatedImages[index],
+      updatedImages[targetIndex],
+    ] = [
+      updatedImages[targetIndex],
+      updatedImages[index],
+    ];
 
     setImages(updatedImages);
   };
 
-  // =========================================================
+  // ==========================================================
   // PRODUCT OPTIONS
-  // =========================================================
+  // ==========================================================
 
   const addOption = () => {
     setOptions((previous) => [
@@ -265,7 +377,8 @@ export default function ProductForm({ initialData }: ProductFormProps) {
   const removeOption = (index: number) => {
     setOptions((previous) =>
       previous.filter(
-        (_, optionIndex) => optionIndex !== index
+        (_, optionIndex) =>
+          optionIndex !== index
       )
     );
 
@@ -298,7 +411,13 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
     if (!value) return;
 
-    if (options[index].values.includes(value)) {
+    if (
+      options[index].values.some(
+        (existing) =>
+          existing.toLowerCase() ===
+          value.toLowerCase()
+      )
+    ) {
       return;
     }
 
@@ -331,7 +450,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
       updated[optionIndex] = {
         ...updated[optionIndex],
-        values: updated[optionIndex].values.filter(
+        values: updated[
+          optionIndex
+        ].values.filter(
           (_, index) => index !== valueIndex
         ),
       };
@@ -340,9 +461,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     });
   };
 
-  // =========================================================
-  // ORDER-TIME OPTIONS
-  // =========================================================
+  // ==========================================================
+  // ORDER SELECTIONS
+  // ==========================================================
 
   const addOrderSelection = () => {
     setOrderSelections((previous) => [
@@ -411,7 +532,11 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     if (!value) return;
 
     if (
-      orderSelections[index].values.includes(value)
+      orderSelections[index].values.some(
+        (existing) =>
+          existing.toLowerCase() ===
+          value.toLowerCase()
+      )
     ) {
       return;
     }
@@ -456,83 +581,220 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     });
   };
 
-  // =========================================================
+  // ==========================================================
+  // GENERATED VARIANTS
+  //
+  // When order selections change, generate the combinations.
+  //
+  // IMPORTANT:
+  // Existing prices are preserved whenever the same
+  // combination already exists.
+  // ==========================================================
+
+  const generatedCombinations = useMemo(() => {
+    if (pricingType !== "variants") {
+      return [];
+    }
+
+    return generateVariantCombinations(
+      orderSelections
+    );
+  }, [orderSelections, pricingType]);
+
+  useEffect(() => {
+    if (pricingType !== "variants") {
+      return;
+    }
+
+    setVariants((previous) => {
+      return generatedCombinations.map(
+        (combination) => {
+          const existing = previous.find(
+            (variant) =>
+              selectionsMatch(
+                variant.selections,
+                combination
+              )
+          );
+
+          return {
+            _id: existing?._id,
+            selections: combination,
+            price: existing?.price ?? 0,
+            sku: existing?.sku || "",
+            status:
+              existing?.status || "active",
+          };
+        }
+      );
+    });
+  }, [generatedCombinations, pricingType]);
+
+  // ==========================================================
+  // UPDATE VARIANT PRICE
+  // ==========================================================
+
+  const updateVariantPrice = (
+    index: number,
+    value: string
+  ) => {
+    const numericValue =
+      value === ""
+        ? 0
+        : Number(value);
+
+    setVariants((previous) => {
+      const updated = [...previous];
+
+      updated[index] = {
+        ...updated[index],
+        price:
+          Number.isFinite(numericValue) &&
+          numericValue >= 0
+            ? numericValue
+            : 0,
+      };
+
+      return updated;
+    });
+  };
+
+  // ==========================================================
+  // UPDATE VARIANT SKU
+  // ==========================================================
+
+  const updateVariantSku = (
+    index: number,
+    value: string
+  ) => {
+    setVariants((previous) => {
+      const updated = [...previous];
+
+      updated[index] = {
+        ...updated[index],
+        sku: value,
+      };
+
+      return updated;
+    });
+  };
+
+  // ==========================================================
+  // RESET PRICING
+  // ==========================================================
+
+  const changePricingType = (
+    value: ProductPricingType
+  ) => {
+    setPricingType(value);
+
+    if (value === "fixed") {
+      setVariants([]);
+    }
+  };
+
+  // ==========================================================
+  // VALIDATION
+  // ==========================================================
+
+  const validateForm = () => {
+    if (!categoryId) {
+      return "Please select a category.";
+    }
+
+    if (!name.trim()) {
+      return "Product name is required.";
+    }
+
+    if (
+      price !== "" &&
+      Number.isNaN(Number(price))
+    ) {
+      return "Please enter a valid price.";
+    }
+
+    if (
+      price !== "" &&
+      Number(price) < 0
+    ) {
+      return "Price cannot be negative.";
+    }
+
+    // Product options
+    for (const option of options) {
+      if (!option.name.trim()) {
+        return "Product option names cannot be empty.";
+      }
+
+      if (option.values.length === 0) {
+        return `Please add at least one value for product option: ${option.name}`;
+      }
+    }
+
+    // Order selections
+    for (const selection of orderSelections) {
+      if (!selection.name.trim()) {
+        return "Order-time option names cannot be empty.";
+      }
+
+      if (selection.values.length === 0) {
+        return `Please add at least one value for order-time option: ${selection.name}`;
+      }
+    }
+
+    // Fixed pricing
+    if (pricingType === "fixed") {
+      if (price === "") {
+        return "Please enter a product price.";
+      }
+
+      if (Number(price) < 0) {
+        return "Price cannot be negative.";
+      }
+    }
+
+    // Variant pricing
+    if (pricingType === "variants") {
+      if (orderSelections.length === 0) {
+        return "Add at least one order-time option before using variant pricing.";
+      }
+
+      if (generatedCombinations.length === 0) {
+        return "Add values to your order-time options before setting variant prices.";
+      }
+
+      if (variants.length !== generatedCombinations.length) {
+        return "Please wait for the variant prices to generate.";
+      }
+
+      for (const variant of variants) {
+        if (
+          !Number.isFinite(variant.price) ||
+          variant.price < 0
+        ) {
+          return `Enter a valid price for ${formatCombination(
+            variant.selections
+          )}.`;
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // ==========================================================
   // SUBMIT
-  // =========================================================
+  // ==========================================================
 
   const handleSubmit = async () => {
     setFormError(null);
 
-    // Basic validation
-    if (!categoryId) {
-      setFormError("Please select a category.");
+    const validationError = validateForm();
+
+    if (validationError) {
+      setFormError(validationError);
       return;
     }
-
-    if (!name.trim()) {
-      setFormError("Product name is required.");
-      return;
-    }
-
-    if (
-      price !== "" &&
-      Number.isNaN(parseFloat(price))
-    ) {
-      setFormError("Please enter a valid price.");
-      return;
-    }
-
-    if (
-      price !== "" &&
-      parseFloat(price) < 0
-    ) {
-      setFormError("Price cannot be negative.");
-      return;
-    }
-
-    // =======================================================
-    // VALIDATE PRODUCT OPTIONS
-    // =======================================================
-
-    for (const option of options) {
-      if (!option.name.trim()) {
-        setFormError(
-          "Product option names cannot be empty."
-        );
-        return;
-      }
-
-      if (option.values.length === 0) {
-        setFormError(
-          `Please add at least one value for product option: ${option.name}`
-        );
-        return;
-      }
-    }
-
-    // =======================================================
-    // VALIDATE ORDER-TIME OPTIONS
-    // =======================================================
-
-    for (const selection of orderSelections) {
-      if (!selection.name.trim()) {
-        setFormError(
-          "Order-time option names cannot be empty."
-        );
-        return;
-      }
-
-      if (selection.values.length === 0) {
-        setFormError(
-          `Please add at least one value for order-time option: ${selection.name}`
-        );
-        return;
-      }
-    }
-
-    // =======================================================
-    // FORM DATA
-    // =======================================================
 
     const formData = new FormData();
 
@@ -560,12 +822,47 @@ export default function ProductForm({ initialData }: ProductFormProps) {
       );
     }
 
-    if (price !== "") {
+    // ========================================================
+    // PRICING
+    // ========================================================
+
+    formData.append(
+      "pricingType",
+      pricingType
+    );
+
+    if (pricingType === "fixed") {
       formData.append(
         "price",
         price
       );
+
+      // Important:
+      // Fixed-price products should not keep old variants.
+      formData.append(
+        "variants",
+        JSON.stringify([])
+      );
     }
+
+    if (pricingType === "variants") {
+      // Do not send the fixed price as the active price.
+      //
+      // Backend can store null/empty depending on controller.
+      formData.append(
+        "price",
+        ""
+      );
+
+      formData.append(
+        "variants",
+        JSON.stringify(variants)
+      );
+    }
+
+    // ========================================================
+    // OTHER DATA
+    // ========================================================
 
     formData.append(
       "status",
@@ -577,19 +874,20 @@ export default function ProductForm({ initialData }: ProductFormProps) {
       featured ? "true" : "false"
     );
 
-    // Product information options
     formData.append(
       "options",
       JSON.stringify(options)
     );
 
-    // Customer order-time options
     formData.append(
       "orderSelections",
       JSON.stringify(orderSelections)
     );
 
-    // Images
+    // ========================================================
+    // IMAGES
+    // ========================================================
+
     images.forEach((image) => {
       if (image.file) {
         formData.append(
@@ -599,9 +897,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
       }
     });
 
-    // =======================================================
+    // ========================================================
     // API
-    // =======================================================
+    // ========================================================
 
     try {
       setIsSubmitting(true);
@@ -636,9 +934,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     }
   };
 
-  // =========================================================
+  // ==========================================================
   // LOADING
-  // =========================================================
+  // ==========================================================
 
   if (loadingCategories) {
     return (
@@ -654,9 +952,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     );
   }
 
-  // =========================================================
+  // ==========================================================
   // CATEGORY ERROR
-  // =========================================================
+  // ==========================================================
 
   if (categoryError) {
     return (
@@ -668,9 +966,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     );
   }
 
-  // =========================================================
+  // ==========================================================
   // NO CATEGORIES
-  // =========================================================
+  // ==========================================================
 
   if (categories.length === 0) {
     return (
@@ -692,16 +990,16 @@ export default function ProductForm({ initialData }: ProductFormProps) {
     );
   }
 
-  // =========================================================
+  // ==========================================================
   // UI
-  // =========================================================
+  // ==========================================================
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 pb-12">
 
-      {/* =====================================================
+      {/* ======================================================
           ERROR
-      ====================================================== */}
+      ======================================================= */}
 
       {formError && (
         <div className="rounded-[9px] border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
@@ -709,9 +1007,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         </div>
       )}
 
-      {/* =====================================================
+      {/* ======================================================
           CATEGORY
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-[#0A1B2E]">
@@ -743,9 +1041,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         </select>
       </div>
 
-      {/* =====================================================
-          PRODUCT INFORMATION
-      ====================================================== */}
+      {/* ======================================================
+          BASIC INFORMATION
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
         <h2 className="text-lg font-bold text-[#0A1B2E]">
@@ -767,6 +1065,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                 onChange={(e) =>
                   setName(e.target.value)
                 }
+                placeholder="Example: Custom Printed T-Shirt"
                 className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
               />
             </div>
@@ -783,6 +1082,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                   setSlug(e.target.value);
                   setIsSlugManuallyEdited(true);
                 }}
+                placeholder="custom-printed-t-shirt"
                 className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
               />
             </div>
@@ -800,6 +1100,7 @@ export default function ProductForm({ initialData }: ProductFormProps) {
               onChange={(e) =>
                 setDescription(e.target.value)
               }
+              placeholder="Describe the product..."
               className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
             />
           </div>
@@ -807,37 +1108,294 @@ export default function ProductForm({ initialData }: ProductFormProps) {
         </div>
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           PRICING
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-bold text-[#0A1B2E]">
-          Pricing
-        </h2>
 
-        <div className="relative mt-4 max-w-xs">
+        <div>
+          <h2 className="text-lg font-bold text-[#0A1B2E]">
+            Pricing
+          </h2>
 
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
-            ₹
-          </span>
+          <p className="mt-1 text-sm text-[#64748B]">
+            Choose whether this product has one price or
+            different prices based on customer selections.
+          </p>
+        </div>
 
-          <input
-            type="number"
-            min="0"
-            value={price}
-            onChange={(e) =>
-              setPrice(e.target.value)
+        {/* PRICING TYPE */}
+
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+          {/* FIXED */}
+
+          <button
+            type="button"
+            onClick={() =>
+              changePricingType("fixed")
             }
-            className="w-full rounded-[9px] border border-[#E5E7EB] py-2 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
-          />
+            className={`rounded-[10px] border p-4 text-left transition ${
+              pricingType === "fixed"
+                ? "border-[#B9954F] bg-[#B9954F]/5 ring-1 ring-[#B9954F]"
+                : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+
+              <div
+                className={`mt-0.5 h-4 w-4 rounded-full border-2 ${
+                  pricingType === "fixed"
+                    ? "border-[#B9954F] bg-[#B9954F]"
+                    : "border-[#CBD5E1]"
+                }`}
+              />
+
+              <div>
+                <p className="text-sm font-bold text-[#0A1B2E]">
+                  Single Price
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-[#64748B]">
+                  One price for the entire product.
+                  Options can still exist.
+                </p>
+              </div>
+
+            </div>
+          </button>
+
+          {/* VARIANTS */}
+
+          <button
+            type="button"
+            onClick={() =>
+              changePricingType("variants")
+            }
+            className={`rounded-[10px] border p-4 text-left transition ${
+              pricingType === "variants"
+                ? "border-[#B9954F] bg-[#B9954F]/5 ring-1 ring-[#B9954F]"
+                : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+
+              <div
+                className={`mt-0.5 h-4 w-4 rounded-full border-2 ${
+                  pricingType === "variants"
+                    ? "border-[#B9954F] bg-[#B9954F]"
+                    : "border-[#CBD5E1]"
+                }`}
+              />
+
+              <div>
+                <p className="text-sm font-bold text-[#0A1B2E]">
+                  Price varies by options
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-[#64748B]">
+                  Different selections can have
+                  different prices.
+                </p>
+              </div>
+
+            </div>
+          </button>
 
         </div>
+
+        {/* FIXED PRICE */}
+
+        {pricingType === "fixed" && (
+          <div className="mt-5 max-w-xs">
+
+            <label className="block text-sm font-semibold text-[#0A1B2E]">
+              Product Price *
+            </label>
+
+            <div className="relative mt-2">
+
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
+                ₹
+              </span>
+
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={price}
+                onChange={(e) =>
+                  setPrice(e.target.value)
+                }
+                placeholder="399"
+                className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
+              />
+
+            </div>
+
+            {orderSelections.length > 0 && (
+              <p className="mt-2 text-xs leading-5 text-[#64748B]">
+                All customer selections will use this
+                same price.
+              </p>
+            )}
+
+          </div>
+        )}
+
+        {/* VARIANT PRICING */}
+
+        {pricingType === "variants" && (
+          <div className="mt-5">
+
+            {orderSelections.length === 0 ? (
+
+              <div className="rounded-[10px] border border-dashed border-[#D8DCE2] bg-[#FAFAF9] p-6 text-center">
+
+                <p className="text-sm font-semibold text-[#0A1B2E]">
+                  Add customer options first
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-[#64748B]">
+                  Add options such as Size, Capacity,
+                  Color, or Material in the Order-Time
+                  Options section below.
+                </p>
+
+              </div>
+
+            ) : generatedCombinations.length === 0 ? (
+
+              <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-5">
+
+                <p className="text-sm font-semibold text-amber-800">
+                  Add values to your order-time options.
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-amber-700">
+                  Variant prices will automatically appear
+                  once the options have values.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div>
+
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+
+                  <div>
+                    <h3 className="text-sm font-bold text-[#0A1B2E]">
+                      Variant Prices
+                    </h3>
+
+                    <p className="mt-1 text-xs text-[#64748B]">
+                      Set the price for every possible
+                      customer selection.
+                    </p>
+                  </div>
+
+                  <span className="w-fit rounded-full bg-[#F7F7F5] px-3 py-1 text-xs font-semibold text-[#64748B]">
+                    {variants.length}{" "}
+                    {variants.length === 1
+                      ? "combination"
+                      : "combinations"}
+                  </span>
+
+                </div>
+
+                <div className="overflow-hidden rounded-[10px] border border-[#E5E7EB]">
+
+                  <div className="hidden grid-cols-[1fr_150px] gap-4 bg-[#F7F7F5] px-4 py-3 sm:grid">
+
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
+                      Selection
+                    </div>
+
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
+                      Price
+                    </div>
+
+                  </div>
+
+                  <div className="divide-y divide-[#E5E7EB]">
+
+                    {variants.map(
+                      (variant, index) => (
+
+                        <div
+                          key={`${formatCombination(
+                            variant.selections
+                          )}-${index}`}
+                          className="grid grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[1fr_150px] sm:items-center sm:gap-4"
+                        >
+
+                          <div>
+                            <p className="text-sm font-semibold text-[#0A1B2E]">
+                              {formatCombination(
+                                variant.selections
+                              )}
+                            </p>
+                          </div>
+
+                          <div>
+
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8] sm:hidden">
+                              Price
+                            </label>
+
+                            <div className="relative">
+
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
+                                ₹
+                              </span>
+
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={
+                                  variant.price === 0
+                                    ? ""
+                                    : variant.price
+                                }
+                                onChange={(e) =>
+                                  updateVariantPrice(
+                                    index,
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="0"
+                                className="w-full rounded-[8px] border border-[#E5E7EB] py-2 pl-8 pr-3 text-sm font-semibold outline-none focus:border-[#B9954F]"
+                              />
+
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                      )
+                    )}
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            )}
+
+          </div>
+        )}
+
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           IMAGES
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
 
@@ -933,9 +1491,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           PRODUCT OPTIONS
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
 
@@ -964,139 +1522,135 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
         <div className="mt-4 space-y-4">
 
-          {options.map((option, optionIndex) => (
-
-            <div
-              key={optionIndex}
-              className="relative rounded-[9px] border border-[#E5E7EB] bg-gray-50/50 p-4"
-            >
-
-              <button
-                type="button"
-                onClick={() =>
-                  removeOption(optionIndex)
-                }
-                className="absolute right-3 top-3 text-sm text-red-600 hover:text-red-700"
+          {options.map(
+            (option, optionIndex) => (
+              <div
+                key={optionIndex}
+                className="relative rounded-[9px] border border-[#E5E7EB] bg-gray-50/50 p-4"
               >
-                Delete
-              </button>
 
-              <div className="max-w-sm">
-
-                <label className="block text-sm font-medium text-[#0A1B2E]">
-                  Option Name *
-                </label>
-
-                <input
-                  type="text"
-                  value={option.name}
-                  onChange={(e) =>
-                    updateOptionName(
-                      optionIndex,
-                      e.target.value
-                    )
+                <button
+                  type="button"
+                  onClick={() =>
+                    removeOption(optionIndex)
                   }
-                  placeholder="Example: Material"
-                  className="mt-2 w-full rounded-[7px] border border-[#E5E7EB] bg-white px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
-                />
+                  className="absolute right-3 top-3 text-sm text-red-600 hover:text-red-700"
+                >
+                  Delete
+                </button>
 
-              </div>
+                <div className="max-w-sm">
 
-              <div className="mt-4">
-
-                <label className="block text-sm font-medium text-[#0A1B2E]">
-                  Values
-                </label>
-
-                {option.values.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-
-                    {option.values.map(
-                      (value, valueIndex) => (
-
-                        <span
-                          key={valueIndex}
-                          className="inline-flex items-center rounded-full bg-[#0A1B2E] px-3 py-1 text-xs text-white"
-                        >
-
-                          {value}
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              removeOptionValue(
-                                optionIndex,
-                                valueIndex
-                              )
-                            }
-                            className="ml-2 text-[#B9954F] hover:text-white"
-                          >
-                            ×
-                          </button>
-
-                        </span>
-
-                      )
-                    )}
-
-                  </div>
-                )}
-
-                <div className="mt-3 flex max-w-md gap-2">
+                  <label className="block text-sm font-medium text-[#0A1B2E]">
+                    Option Name *
+                  </label>
 
                   <input
                     type="text"
-                    value={
-                      newOptionValue[
-                        optionIndex
-                      ] || ""
-                    }
+                    value={option.name}
                     onChange={(e) =>
-                      setNewOptionValue({
-                        ...newOptionValue,
-                        [optionIndex]:
-                          e.target.value,
-                      })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addOptionValue(
-                          optionIndex
-                        );
-                      }
-                    }}
-                    placeholder="Add value"
-                    className="w-full rounded-[7px] border border-[#E5E7EB] bg-white px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
-                  />
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      addOptionValue(
-                        optionIndex
+                      updateOptionName(
+                        optionIndex,
+                        e.target.value
                       )
                     }
-                    className="rounded-[7px] bg-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#0A1B2E]"
-                  >
-                    Add
-                  </button>
+                    placeholder="Example: Material"
+                    className="mt-2 w-full rounded-[7px] border border-[#E5E7EB] bg-white px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
+                  />
+
+                </div>
+
+                <div className="mt-4">
+
+                  <label className="block text-sm font-medium text-[#0A1B2E]">
+                    Values
+                  </label>
+
+                  {option.values.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+
+                      {option.values.map(
+                        (value, valueIndex) => (
+                          <span
+                            key={valueIndex}
+                            className="inline-flex items-center rounded-full bg-[#0A1B2E] px-3 py-1 text-xs text-white"
+                          >
+                            {value}
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeOptionValue(
+                                  optionIndex,
+                                  valueIndex
+                                )
+                              }
+                              className="ml-2 text-[#B9954F] hover:text-white"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        )
+                      )}
+
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex max-w-md gap-2">
+
+                    <input
+                      type="text"
+                      value={
+                        newOptionValue[
+                          optionIndex
+                        ] || ""
+                      }
+                      onChange={(e) =>
+                        setNewOptionValue({
+                          ...newOptionValue,
+                          [optionIndex]:
+                            e.target.value,
+                        })
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addOptionValue(
+                            optionIndex
+                          );
+                        }
+                      }}
+                      placeholder="Add value"
+                      className="w-full rounded-[7px] border border-[#E5E7EB] bg-white px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        addOptionValue(
+                          optionIndex
+                        )
+                      }
+                      className="rounded-[7px] bg-[#E5E7EB] px-4 py-2 text-sm font-medium text-[#0A1B2E]"
+                    >
+                      Add
+                    </button>
+
+                  </div>
 
                 </div>
 
               </div>
-
-            </div>
-
-          ))}
+            )
+          )}
 
         </div>
 
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           ORDER-TIME OPTIONS
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
 
@@ -1109,10 +1663,8 @@ export default function ProductForm({ initialData }: ProductFormProps) {
             </h2>
 
             <p className="mt-1 max-w-2xl text-sm text-[#64748B]">
-              Add options that customers must choose
-              before adding this product to their cart.
-              For example, T-shirts can have Size and
-              mugs can have Capacity.
+              Options customers choose before adding the
+              product to their cart.
             </p>
 
           </div>
@@ -1127,7 +1679,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
         </div>
 
-        {/* No options */}
         {orderSelections.length === 0 ? (
 
           <div className="mt-5 rounded-[9px] border border-dashed border-[#D8DCE2] bg-[#FAFAF9] p-6 text-center">
@@ -1155,7 +1706,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                   className="relative rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF9] p-5"
                 >
 
-                  {/* Delete */}
                   <button
                     type="button"
                     onClick={() =>
@@ -1168,7 +1718,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
                     Delete
                   </button>
 
-                  {/* Name */}
                   <div className="max-w-sm">
 
                     <label className="block text-sm font-semibold text-[#0A1B2E]">
@@ -1195,7 +1744,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
                   </div>
 
-                  {/* Required */}
                   <label className="mt-4 flex cursor-pointer items-center gap-2">
 
                     <input
@@ -1216,7 +1764,6 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
                   </label>
 
-                  {/* Values */}
                   <div className="mt-5">
 
                     <label className="block text-sm font-semibold text-[#0A1B2E]">
@@ -1321,9 +1868,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           VISIBILITY
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
 
@@ -1394,9 +1941,9 @@ export default function ProductForm({ initialData }: ProductFormProps) {
 
       </div>
 
-      {/* =====================================================
+      {/* ======================================================
           ACTIONS
-      ====================================================== */}
+      ======================================================= */}
 
       <div className="flex items-center justify-end gap-4 border-t border-[#E5E7EB] pt-6">
 

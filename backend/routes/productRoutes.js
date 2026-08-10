@@ -19,20 +19,20 @@ import {
 
 const router = express.Router();
 
-router.route('/')
+router.route("/")
     .get(getProducts)
     .post(
         authenticateUser,
-        upload.array('images', 10),
+        upload.array("images", 10),
         requireAdmin,
         createProduct
     );
 
-router.route('/:id')
+router.route("/:id")
     .get(getProduct)
     .put(
         authenticateUser,
-        upload.array('images', 10),
+        upload.array("images", 10),
         requireAdmin,
         updateProduct
     )
