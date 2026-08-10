@@ -330,9 +330,18 @@ ErrorState.displayName = "ErrorState";
 
 const ProductCard = memo(
   ({ product, index }: { product: Product; index: number }) => {
-    const image =
-      product.images?.[0] ||
-      "/images/product-placeholder.jpg";
+   const rawImage = product.images?.[0];
+
+const image =
+  typeof rawImage === "string" &&
+  rawImage.trim().length > 0 &&
+  (
+    rawImage.startsWith("https://") ||
+    rawImage.startsWith("http://") ||
+    rawImage.startsWith("/")
+  )
+    ? rawImage
+    : "/images/product-placeholder.jpg";
 
     const productHref = `/products/${
       product.slug || product._id
@@ -388,26 +397,15 @@ const ProductCard = memo(
             bg-[#F5F4F0]
           "
         >
-          <Image
-            src={image}
-            alt={product.name}
-            fill
-            priority={isPriority}
-            loading={isPriority ? undefined : "lazy"}
-            sizes="
-              (max-width: 639px) 50vw,
-              (max-width: 1023px) 33vw,
-              25vw
-            "
-            className="
-              object-cover
-              transition-transform
-              duration-500
-              ease-out
-              will-change-transform
-              md:group-hover:scale-[1.045]
-            "
-          />
+       <Image
+  src={image}
+  alt={product.name}
+  fill
+  priority={isPriority}
+  loading={isPriority ? undefined : "lazy"}
+  sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 25vw"
+  className="object-cover transition-transform duration-500 ease-out will-change-transform md:group-hover:scale-[1.045]"
+/>
 
           {/* Very subtle image overlay */}
           <div

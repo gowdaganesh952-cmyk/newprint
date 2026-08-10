@@ -1,3 +1,4 @@
+// backend/middleware/authMiddleware.js
 import { requireAuth, clerkClient } from '@clerk/express';
 
 // 1. Require Authentication (Standard Users)

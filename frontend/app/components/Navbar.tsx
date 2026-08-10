@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Show, UserButton, useUser } from "@clerk/nextjs";
+import { useCart } from "./cart/CartProvider";
 
 const navLinks = [
   {
@@ -11,8 +12,8 @@ const navLinks = [
     href: "/",
   },
   {
-    name: "Services",
-    href: "/services",
+    name: "Products",
+    href: "/products",
   },
   {
     name: "About",
@@ -30,6 +31,7 @@ export default function Navbar() {
 
   const pathname = usePathname();
   const { user } = useUser();
+  const { itemCount, isInitializing } = useCart();
 
   const dashboardPath =
     user?.publicMetadata?.role === "admin"
@@ -101,7 +103,7 @@ export default function Navbar() {
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
-    };
+    }
   }, [isOpen]);
 
   /* =========================================================
@@ -245,12 +247,32 @@ export default function Navbar() {
           </nav>
 
           {/* ===================================================
-              CLERK AUTH - DESKTOP
+              ICONS & AUTH - DESKTOP
           =================================================== */}
-          <div className="ml-8 flex items-center">
+          <div className="ml-8 flex items-center gap-4">
+            
+            {/* -------------------------------------------------
+                CART ICON
+            ------------------------------------------------- */}
+            <Link 
+              href="/cart" 
+              className="relative p-2 text-[#0A1B2E] transition-colors hover:text-[#B9954F]"
+              aria-label="View cart"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="21" r="1" />
+                <circle cx="19" cy="21" r="1" />
+                <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+              </svg>
+              {!isInitializing && itemCount > 0 && (
+                <span className="absolute -top-0 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#B9954F] px-1 text-[10px] font-bold text-white">
+                  {itemCount}
+                </span>
+              )}
+            </Link>
+
             {/* -------------------------------------------------
                 LOGGED OUT
-                Login intentionally opens SIGN UP
             ------------------------------------------------- */}
             <Show when="signed-out">
               <Link
@@ -327,76 +349,92 @@ export default function Navbar() {
         </div>
 
         {/* =====================================================
-            MOBILE MENU BUTTON
+            MOBILE HEADER ICONS (CART & MENU)
         ===================================================== */}
-        <button
-          type="button"
-          onClick={() =>
-            setIsOpen((previous) => !previous)
-          }
-          className="
-            inline-flex
-            h-11
-            w-11
-            items-center
-            justify-center
-            rounded-[9px]
-            text-[#0A1B2E]
-            transition-colors
-            duration-200
-            hover:bg-[#F7F7F5]
-            focus-visible:outline-none
-            focus-visible:ring-2
-            focus-visible:ring-[#B9954F]
-            md:hidden
-          "
-          aria-controls="mobile-navigation"
-          aria-expanded={isOpen}
-          aria-label={
-            isOpen
-              ? "Close navigation menu"
-              : "Open navigation menu"
-          }
-        >
-          {isOpen ? (
-            /* Close */
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M6 6L18 18" />
-              <path d="M18 6L6 18" />
+        <div className="flex items-center gap-2 md:hidden">
+          <Link 
+            href="/cart" 
+            className="relative flex h-11 w-11 items-center justify-center rounded-[9px] text-[#0A1B2E] transition-colors duration-200 hover:bg-[#F7F7F5]"
+            aria-label="View cart"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="8" cy="21" r="1" />
+              <circle cx="19" cy="21" r="1" />
+              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
             </svg>
-          ) : (
-            /* Hamburger */
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M4 7H20" />
-              <path d="M4 12H20" />
-              <path d="M4 17H20" />
-            </svg>
-          )}
-        </button>
+            {!isInitializing && itemCount > 0 && (
+              <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#B9954F] px-1 text-[10px] font-bold text-white">
+                {itemCount}
+              </span>
+            )}
+          </Link>
+
+          <button
+            type="button"
+            onClick={() =>
+              setIsOpen((previous) => !previous)
+            }
+            className="
+              inline-flex
+              h-11
+              w-11
+              items-center
+              justify-center
+              rounded-[9px]
+              text-[#0A1B2E]
+              transition-colors
+              duration-200
+              hover:bg-[#F7F7F5]
+              focus-visible:outline-none
+              focus-visible:ring-2
+              focus-visible:ring-[#B9954F]
+            "
+            aria-controls="mobile-navigation"
+            aria-expanded={isOpen}
+            aria-label={
+              isOpen
+                ? "Close navigation menu"
+                : "Open navigation menu"
+            }
+          >
+            {isOpen ? (
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M6 6L18 18" />
+                <path d="M18 6L6 18" />
+              </svg>
+            ) : (
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7H20" />
+                <path d="M4 12H20" />
+                <path d="M4 17H20" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* =======================================================
-          MOBILE NAVIGATION (Optimized with CSS Grid transition)
+          MOBILE NAVIGATION
       ======================================================= */}
       <div
         id="mobile-navigation"
@@ -428,9 +466,6 @@ export default function Navbar() {
             aria-label="Mobile navigation"
           >
             <div className="flex flex-col">
-              {/* =================================================
-                  MOBILE LINKS
-              ================================================= */}
               {navLinks.map((link) => {
                 const active = isLinkActive(link.href);
 
@@ -461,9 +496,6 @@ export default function Navbar() {
                 );
               })}
 
-              {/* =================================================
-                  MOBILE AUTH
-              ================================================= */}
               <div
                 className="
                   mt-3
@@ -472,10 +504,6 @@ export default function Navbar() {
                   pt-4
                 "
               >
-                {/* -------------------------------------------------
-                    LOGGED OUT
-                    Login → SIGN UP
-                ------------------------------------------------- */}
                 <Show when="signed-out">
                   <Link
                     href="/sign-up"
@@ -506,9 +534,6 @@ export default function Navbar() {
                   </Link>
                 </Show>
 
-                {/* -------------------------------------------------
-                    LOGGED IN
-                ------------------------------------------------- */}
                 <Show when="signed-in">
                   <div
                     className="

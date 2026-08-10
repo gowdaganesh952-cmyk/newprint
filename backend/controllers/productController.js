@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import cloudinary from '../config/cloudinary.js';
 
@@ -142,21 +143,34 @@ export const getProducts = async (req, res) => {
 };
 
 // ============================================================
-// GET SINGLE PRODUCT
+// GET SINGLE PRODUCT (UPDATED FOR SLUG SUPPORT)
 // @route   GET /api/products/:id
 // @access  Public
 // ============================================================
 
 export const getProduct = async (req, res) => {
     try {
+        const identifier = req.params.id;
 
-        const product =
-            await Product.findById(
-                req.params.id
-            ).populate(
-                'category',
-                'name slug'
+        let product;
+
+        // 1. If identifier is a valid MongoDB ObjectId, try to find by _id first.
+        if (mongoose.Types.ObjectId.isValid(identifier)) {
+            product = await Product.findById(identifier).populate(
+                "category",
+                "name slug"
             );
+        }
+
+        // 2. If not found by ID (or not a valid ID), try finding by slug.
+        if (!product) {
+            product = await Product.findOne({
+                slug: identifier.toLowerCase()
+            }).populate(
+                "category",
+                "name slug"
+            );
+        }
 
         if (!product) {
             return res.status(404).json({
@@ -171,17 +185,16 @@ export const getProduct = async (req, res) => {
         });
 
     } catch (error) {
-
-        if (error.name === 'CastError') {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found"
-            });
-        }
+        console.error(
+            "GET PRODUCT ERROR:",
+            error
+        );
 
         return res.status(500).json({
             success: false,
-            message: error.message
+            message:
+                error.message ||
+                "Failed to fetch product"
         });
     }
 };
@@ -194,21 +207,6 @@ export const getProduct = async (req, res) => {
 
 export const createProduct = async (req, res) => {
     try {
-
-        console.log(
-            "========== CREATE PRODUCT =========="
-        );
-
-        console.log(
-            "BODY:",
-            req.body
-        );
-
-        console.log(
-            "FILES:",
-            req.files?.length || 0
-        );
-
         const {
             category,
             name,
@@ -220,7 +218,8 @@ export const createProduct = async (req, res) => {
             slug,
             price,
             featured,
-            options
+            options,
+            orderSelections 
         } = req.body;
 
         // ------------------------------------------------------
@@ -310,7 +309,7 @@ export const createProduct = async (req, res) => {
             featured === "true";
 
         // ------------------------------------------------------
-        // OPTIONS
+        // OPTIONS (Existing Info)
         // ------------------------------------------------------
 
         let parsedOptions = [];
@@ -368,6 +367,52 @@ export const createProduct = async (req, res) => {
         }
 
         // ------------------------------------------------------
+        // ORDER SELECTIONS
+        // ------------------------------------------------------
+        
+        let parsedOrderSelections = [];
+
+        if (orderSelections) {
+            try {
+                parsedOrderSelections =
+                    typeof orderSelections === "string"
+                        ? JSON.parse(orderSelections)
+                        : orderSelections;
+            } catch (error) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid order selections"
+                });
+            }
+        }
+
+        if (!Array.isArray(parsedOrderSelections)) {
+            return res.status(400).json({
+                success: false,
+                message: "Order selections must be an array"
+            });
+        }
+
+        for (const sel of parsedOrderSelections) {
+            if (!sel.name?.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Order selection name cannot be empty"
+                });
+            }
+
+            if (
+                !Array.isArray(sel.values) ||
+                sel.values.length === 0
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Order selection "${sel.name}" must have at least one value`
+                });
+            }
+        }
+
+        // ------------------------------------------------------
         // UPLOAD IMAGES
         // ------------------------------------------------------
 
@@ -408,6 +453,7 @@ export const createProduct = async (req, res) => {
                 price: parsedPrice,
                 images: imageUrls,
                 options: parsedOptions,
+                orderSelections: parsedOrderSelections,
                 status,
                 featured: parsedFeatured
             });
@@ -423,11 +469,6 @@ export const createProduct = async (req, res) => {
                     "category",
                     "name slug status"
                 );
-
-        console.log(
-            "PRODUCT CREATED:",
-            populatedProduct._id
-        );
 
         return res.status(201).json({
             success: true,
@@ -475,6 +516,7 @@ export const createProduct = async (req, res) => {
         });
     }
 };
+
 // ============================================================
 // UPDATE PRODUCT
 // @route   PUT /api/products/:id
@@ -495,6 +537,7 @@ export const updateProduct = async (req, res) => {
             price,
             featured,
             options,
+            orderSelections, 
             existingImages
         } = req.body;
 
@@ -598,7 +641,7 @@ export const updateProduct = async (req, res) => {
         }
 
         // ------------------------------------------------------
-        // OPTIONS
+        // OPTIONS (Existing Info)
         // ------------------------------------------------------
 
         let parsedOptions =
@@ -648,6 +691,52 @@ export const updateProduct = async (req, res) => {
                     success: false,
                     message:
                         `Option "${option.name}" must have at least one value`
+                });
+            }
+        }
+
+        // ------------------------------------------------------
+        // ORDER SELECTIONS 
+        // ------------------------------------------------------
+
+        let parsedOrderSelections = product.orderSelections || [];
+
+        if (orderSelections !== undefined) {
+            try {
+                parsedOrderSelections =
+                    typeof orderSelections === "string"
+                        ? JSON.parse(orderSelections)
+                        : orderSelections;
+            } catch {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid order selections"
+                });
+            }
+        }
+
+        if (!Array.isArray(parsedOrderSelections)) {
+            return res.status(400).json({
+                success: false,
+                message: "Order selections must be an array"
+            });
+        }
+
+        for (const sel of parsedOrderSelections) {
+            if (!sel.name?.trim()) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Order selection name cannot be empty"
+                });
+            }
+
+            if (
+                !Array.isArray(sel.values) ||
+                sel.values.length === 0
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Order selection "${sel.name}" must have at least one value`
                 });
             }
         }
@@ -720,6 +809,7 @@ export const updateProduct = async (req, res) => {
                     status,
                     featured: parsedFeatured,
                     options: parsedOptions,
+                    orderSelections: parsedOrderSelections, 
                     images: finalImages
                 },
                 {
@@ -783,6 +873,7 @@ export const updateProduct = async (req, res) => {
         });
     }
 };
+
 // ============================================================
 // DELETE PRODUCT
 // @route   DELETE /api/products/:id

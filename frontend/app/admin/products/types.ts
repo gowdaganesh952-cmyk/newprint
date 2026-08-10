@@ -1,7 +1,12 @@
-// frontend/app/admin/products/types.ts
 export interface ProductOption {
   name: string;
   values: string[];
+}
+
+export interface ProductOrderSelection {
+  name: string;
+  values: string[];
+  required: boolean;
 }
 
 export interface Product {
@@ -12,14 +17,17 @@ export interface Product {
   description?: string;
   price?: number;
   images?: string[];
+
   options?: ProductOption[];
+
+  orderSelections?: ProductOrderSelection[];
+
   status: "active" | "inactive";
   featured: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
 
-// Temporary Category type to match the backend
 export interface Category {
   _id: string;
   name: string;

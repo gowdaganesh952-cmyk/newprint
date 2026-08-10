@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { CartProvider } from "./components/cart/CartProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,7 +23,11 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body>{children}</body>
+        <body>
+          <CartProvider>
+            {children}
+          </CartProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

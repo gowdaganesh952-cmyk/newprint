@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
+import { useCallback, useMemo } from "react";
 
 export const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
@@ -15,107 +16,89 @@ export class ApiError extends Error {
   }
 }
 
+/*
+ * Convert body correctly:
+ * FormData → send directly
+ * JSON/object → JSON.stringify()
+ * 
+ * Moved outside the hook so it doesn't recreate on every render
+ */
+const prepareBody = (body?: unknown): BodyInit | undefined => {
+  if (body === undefined) {
+    return undefined;
+  }
+
+  if (body instanceof FormData) {
+    return body;
+  }
+
+  return JSON.stringify(body);
+};
+
 export function useApi() {
   const { getToken } = useAuth();
 
-  async function request<T>(
-    path: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const token = await getToken();
+  // 1. Make the core request function stable using useCallback
+  const request = useCallback(
+    async <T>(path: string, options: RequestInit = {}): Promise<T> => {
+      const token = await getToken();
+      const headers = new Headers(options.headers);
 
-    const headers = new Headers(options.headers);
-
-    /*
-     * IMPORTANT:
-     * Do NOT set Content-Type for FormData.
-     * The browser automatically sets:
-     *
-     * multipart/form-data; boundary=...
-     *
-     * For normal JSON requests, set application/json.
-     */
-    if (options.body && !(options.body instanceof FormData)) {
-      headers.set("Content-Type", "application/json");
-    }
-
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    }
-
-    const response = await fetch(`${BASE_URL}${path}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      let message = `Request failed (${response.status})`;
-
-      try {
-        const data = await response.json();
-
-        if (data && typeof data.message === "string") {
-          message = data.message;
-        }
-      } catch {
-        // Ignore invalid/empty JSON response
+      if (options.body && !(options.body instanceof FormData)) {
+        headers.set("Content-Type", "application/json");
       }
 
-      throw new ApiError(response.status, message);
-    }
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
 
-    if (response.status === 204) {
-      return undefined as T;
-    }
+      const response = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers,
+      });
 
-    return response.json();
-  }
+      if (!response.ok) {
+        let message = `Request failed (${response.status})`;
 
-  /*
-   * Convert body correctly:
-   *
-   * FormData → send directly
-   * JSON/object → JSON.stringify()
-   */
-  const prepareBody = (body?: unknown): BodyInit | undefined => {
-    if (body === undefined) {
-      return undefined;
-    }
+        try {
+          const data = await response.json();
+          if (data && typeof data.message === "string") {
+            message = data.message;
+          }
+        } catch {
+          // Ignore invalid/empty JSON response
+        }
 
-    if (body instanceof FormData) {
-      return body;
-    }
+        throw new ApiError(response.status, message);
+      }
 
-    return JSON.stringify(body);
-  };
+      if (response.status === 204) {
+        return undefined as T;
+      }
 
-  return {
-    get: <T = unknown>(path: string) =>
-      request<T>(path, {
-        method: "GET",
-      }),
+      return response.json();
+    },
+    [getToken]
+  );
 
-    post: <T = unknown>(path: string, body?: unknown) =>
-      request<T>(path, {
-        method: "POST",
-        body: prepareBody(body),
-      }),
+  // 2. Memoize the returned methods so they never trigger unnecessary re-renders in components
+  return useMemo(
+    () => ({
+      get: <T = unknown>(path: string, options?: RequestInit) =>
+        request<T>(path, { ...options, method: "GET" }),
 
-    put: <T = unknown>(path: string, body?: unknown) =>
-      request<T>(path, {
-        method: "PUT",
-        body: prepareBody(body),
-      }),
+      post: <T = unknown>(path: string, body?: unknown, options?: RequestInit) =>
+        request<T>(path, { ...options, method: "POST", body: prepareBody(body) }),
 
-    patch: <T = unknown>(path: string, body?: unknown) =>
-      request<T>(path, {
-        method: "PATCH",
-        body: prepareBody(body),
-      }),
+      put: <T = unknown>(path: string, body?: unknown, options?: RequestInit) =>
+        request<T>(path, { ...options, method: "PUT", body: prepareBody(body) }),
 
-    delete: <T = unknown>(path: string) =>
-      request<T>(path, {
-        method: "DELETE",
-      }),
-  };
+      patch: <T = unknown>(path: string, body?: unknown, options?: RequestInit) =>
+        request<T>(path, { ...options, method: "PATCH", body: prepareBody(body) }),
+
+      delete: <T = unknown>(path: string, options?: RequestInit) =>
+        request<T>(path, { ...options, method: "DELETE" }),
+    }),
+    [request]
+  );
 }

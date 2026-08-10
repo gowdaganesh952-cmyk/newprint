@@ -5,6 +5,13 @@ const productOptionSchema = new mongoose.Schema({
     values: [{ type: String, required: true }]
 }, { _id: false });
 
+// NEW: Schema for Order Selections
+const productOrderSelectionSchema = new mongoose.Schema({
+    name: { type: String, required: true },
+    values: [{ type: String, required: true }],
+    required: { type: Boolean, default: true }
+}, { _id: false });
+
 const productSchema = new mongoose.Schema({
     category: {
         type: mongoose.Schema.Types.ObjectId,
@@ -36,7 +43,13 @@ const productSchema = new mongoose.Schema({
         type: [String],
         validate: [arrayLimit, 'Exceeds the limit of 10 images']
     },
+    
+    // Existing Content / Information
     options: [productOptionSchema],
+    
+    // NEW: Customer Selections
+    orderSelections: [productOrderSelectionSchema],
+
     status: {
         type: String,
         enum: ['active', 'inactive'],
