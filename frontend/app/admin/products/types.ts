@@ -11,31 +11,11 @@ export interface ProductOrderSelection {
 
 /**
  * Defines how the product price works.
- *
- * fixed:
- * One price for the product.
- *
- * variants:
- * Price depends on the customer's selected options.
  */
 export type ProductPricingType = "fixed" | "variants";
 
 /**
- * One price combination for a product.
- *
- * Examples:
- *
- * { Capacity: "250ml" } -> ₹150
- *
- * { Capacity: "500ml" } -> ₹200
- *
- * OR
- *
- * { Size: "L" } -> ₹449
- *
- * OR multiple selections:
- *
- * { Size: "L", Printing: "Front + Back" } -> ₹499
+ * One price + inventory combination for a product.
  */
 export interface ProductVariant {
   _id?: string;
@@ -45,6 +25,17 @@ export interface ProductVariant {
   price: number;
 
   sku?: string;
+
+  /**
+   * Currently available quantity.
+   */
+  stock: number;
+
+  /**
+   * Show low-stock warning when stock
+   * reaches this number.
+   */
+  lowStockThreshold?: number;
 
   status?: "active" | "inactive";
 }
@@ -61,47 +52,32 @@ export interface Product {
   description?: string;
 
   /**
-   * Used when pricingType === "fixed".
-   *
-   * Example:
-   * Sticker -> ₹50
-   * Mug -> ₹199
-   *
-   * For variant pricing this can be undefined/null.
+   * Used for fixed pricing.
    */
   price?: number;
 
   /**
-   * Determines whether this product has
-   * one fixed price or selection-based prices.
+   * Fixed or variant pricing.
    */
   pricingType?: ProductPricingType;
 
+  /**
+   * Stock for fixed-price products.
+   */
+  stock?: number;
+
+  /**
+   * Low-stock warning threshold
+   * for fixed-price products.
+   */
+  lowStockThreshold?: number;
+
   images?: string[];
 
-  /**
-   * General product information.
-   *
-   * Example:
-   * Material -> Cotton, Polyester
-   */
   options?: ProductOption[];
 
-  /**
-   * Options selected by the customer while ordering.
-   *
-   * Example:
-   * Size -> S, M, L, XL
-   *
-   * Capacity -> 250ml, 500ml
-   */
   orderSelections?: ProductOrderSelection[];
 
-  /**
-   * Price combinations.
-   *
-   * Used only when pricingType === "variants".
-   */
   variants?: ProductVariant[];
 
   status: "active" | "inactive";

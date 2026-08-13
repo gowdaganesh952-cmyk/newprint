@@ -26,18 +26,19 @@ const generateSlug = (text) => {
 
 const uploadStream = (buffer) => {
     return new Promise((resolve, reject) => {
-        const stream = cloudinary.uploader.upload_stream(
-            {
-                folder: "new_print_products",
-            },
-            (error, result) => {
-                if (error) {
-                    return reject(error);
-                }
+        const stream =
+            cloudinary.uploader.upload_stream(
+                {
+                    folder: "new_print_products",
+                },
+                (error, result) => {
+                    if (error) {
+                        return reject(error);
+                    }
 
-                resolve(result.secure_url);
-            }
-        );
+                    resolve(result.secure_url);
+                }
+            );
 
         stream.end(buffer);
     });
@@ -47,8 +48,15 @@ const uploadStream = (buffer) => {
 // HELPER: PARSE JSON FIELD
 // ============================================================
 
-const parseJsonField = (value, defaultValue) => {
-    if (value === undefined || value === null || value === "") {
+const parseJsonField = (
+    value,
+    defaultValue
+) => {
+    if (
+        value === undefined ||
+        value === null ||
+        value === ""
+    ) {
         return defaultValue;
     }
 
@@ -67,16 +75,28 @@ const parseJsonField = (value, defaultValue) => {
 // HELPER: PARSE BOOLEAN
 // ============================================================
 
-const parseBoolean = (value, defaultValue = false) => {
-    if (value === undefined || value === null) {
+const parseBoolean = (
+    value,
+    defaultValue = false
+) => {
+    if (
+        value === undefined ||
+        value === null
+    ) {
         return defaultValue;
     }
 
-    if (value === true || value === "true") {
+    if (
+        value === true ||
+        value === "true"
+    ) {
         return true;
     }
 
-    if (value === false || value === "false") {
+    if (
+        value === false ||
+        value === "false"
+    ) {
         return false;
     }
 
@@ -84,32 +104,134 @@ const parseBoolean = (value, defaultValue = false) => {
 };
 
 // ============================================================
+// HELPER: PARSE STOCK
+//
+// Stock must always be a whole number >= 0.
+// ============================================================
+
+const parseStock = (
+    value,
+    fieldName = "Stock"
+) => {
+    if (
+        value === undefined ||
+        value === null ||
+        value === ""
+    ) {
+        return {
+            error: `${fieldName} is required`,
+        };
+    }
+
+    const number = Number(value);
+
+    if (
+        !Number.isFinite(number) ||
+        number < 0 ||
+        !Number.isInteger(number)
+    ) {
+        return {
+            error: `${fieldName} must be a whole number greater than or equal to 0`,
+        };
+    }
+
+    return {
+        value: number,
+    };
+};
+
+// ============================================================
+// HELPER: PARSE LOW STOCK THRESHOLD
+// ============================================================
+
+const parseLowStockThreshold = (
+    value,
+    defaultValue = 5,
+    fieldName = "Low stock threshold"
+) => {
+    if (
+        value === undefined ||
+        value === null ||
+        value === ""
+    ) {
+        return {
+            value: defaultValue,
+        };
+    }
+
+    const number = Number(value);
+
+    if (
+        !Number.isFinite(number) ||
+        number < 0 ||
+        !Number.isInteger(number)
+    ) {
+        return {
+            error: `${fieldName} must be a whole number greater than or equal to 0`,
+        };
+    }
+
+    return {
+        value: number,
+    };
+};
+
+// ============================================================
 // VALIDATE GENERAL OPTIONS
 // ============================================================
 
-const validateOptions = (options) => {
+const validateOptions = (
+    options
+) => {
     if (!Array.isArray(options)) {
         return "Product options must be an array";
     }
 
+    const names = new Set();
+
     for (const option of options) {
-        if (!option || !option.name?.trim()) {
+        if (
+            !option ||
+            !option.name?.trim()
+        ) {
             return "Option name cannot be empty";
         }
 
+        const name =
+            option.name.trim();
+
         if (
-            !Array.isArray(option.values) ||
-            option.values.length === 0
+            names.has(
+                name.toLowerCase()
+            )
         ) {
-            return `Option "${option.name}" must have at least one value`;
+            return `Duplicate product option "${name}"`;
         }
 
-        const values = option.values
-            .map((value) => String(value).trim())
-            .filter(Boolean);
+        names.add(
+            name.toLowerCase()
+        );
 
-        if (values.length === 0) {
-            return `Option "${option.name}" must have at least one value`;
+        if (
+            !Array.isArray(
+                option.values
+            ) ||
+            option.values.length === 0
+        ) {
+            return `Option "${name}" must have at least one value`;
+        }
+
+        const values =
+            option.values
+                .map((value) =>
+                    String(value).trim()
+                )
+                .filter(Boolean);
+
+        if (
+            values.length === 0
+        ) {
+            return `Option "${name}" must have at least one value`;
         }
     }
 
@@ -120,7 +242,9 @@ const validateOptions = (options) => {
 // VALIDATE ORDER SELECTIONS
 // ============================================================
 
-const validateOrderSelections = (selections) => {
+const validateOrderSelections = (
+    selections
+) => {
     if (!Array.isArray(selections)) {
         return "Order selections must be an array";
     }
@@ -128,30 +252,47 @@ const validateOrderSelections = (selections) => {
     const names = new Set();
 
     for (const selection of selections) {
-        if (!selection || !selection.name?.trim()) {
+        if (
+            !selection ||
+            !selection.name?.trim()
+        ) {
             return "Order selection name cannot be empty";
         }
 
-        const name = selection.name.trim();
+        const name =
+            selection.name.trim();
 
-        if (names.has(name.toLowerCase())) {
+        if (
+            names.has(
+                name.toLowerCase()
+            )
+        ) {
             return `Duplicate order selection "${name}"`;
         }
 
-        names.add(name.toLowerCase());
+        names.add(
+            name.toLowerCase()
+        );
 
         if (
-            !Array.isArray(selection.values) ||
+            !Array.isArray(
+                selection.values
+            ) ||
             selection.values.length === 0
         ) {
             return `Order selection "${name}" must have at least one value`;
         }
 
-        const values = selection.values
-            .map((value) => String(value).trim())
-            .filter(Boolean);
+        const values =
+            selection.values
+                .map((value) =>
+                    String(value).trim()
+                )
+                .filter(Boolean);
 
-        if (values.length === 0) {
+        if (
+            values.length === 0
+        ) {
             return `Order selection "${name}" must have at least one value`;
         }
     }
@@ -175,26 +316,36 @@ const validateVariants = (
         return "At least one price variant is required";
     }
 
-    const selectionDefinitions = new Map();
+    const selectionDefinitions =
+        new Map();
 
-    for (const selection of orderSelections) {
+    for (
+        const selection of orderSelections
+    ) {
         selectionDefinitions.set(
             selection.name.trim(),
             new Set(
-                selection.values.map((value) =>
-                    String(value).trim()
+                selection.values.map(
+                    (value) =>
+                        String(value).trim()
                 )
             )
         );
     }
 
-    const combinationKeys = new Set();
+    const combinationKeys =
+        new Set();
 
-    for (const variant of variants) {
+    const skuSet = new Set();
+
+    for (
+        const variant of variants
+    ) {
         if (
             !variant ||
             !variant.selections ||
-            typeof variant.selections !== "object"
+            typeof variant.selections !==
+                "object"
         ) {
             return "Each variant must contain selections";
         }
@@ -203,13 +354,90 @@ const validateVariants = (
         // PRICE
         // ------------------------------------------------------
 
-        const variantPrice = Number(variant.price);
+        const variantPrice =
+            Number(variant.price);
 
         if (
-            !Number.isFinite(variantPrice) ||
+            !Number.isFinite(
+                variantPrice
+            ) ||
             variantPrice < 0
         ) {
             return "Every variant must have a valid non-negative price";
+        }
+
+        // ------------------------------------------------------
+        // STOCK
+        // ------------------------------------------------------
+
+        const variantStock =
+            Number(variant.stock);
+
+        if (
+            !Number.isFinite(
+                variantStock
+            ) ||
+            variantStock < 0 ||
+            !Number.isInteger(
+                variantStock
+            )
+        ) {
+            return "Every variant must have a valid whole-number stock quantity";
+        }
+
+        // ------------------------------------------------------
+        // LOW STOCK THRESHOLD
+        // ------------------------------------------------------
+
+        const threshold =
+            variant.lowStockThreshold ===
+                undefined ||
+            variant.lowStockThreshold ===
+                null ||
+            variant.lowStockThreshold ===
+                ""
+                ? 5
+                : Number(
+                      variant.lowStockThreshold
+                  );
+
+        if (
+            !Number.isFinite(
+                threshold
+            ) ||
+            threshold < 0 ||
+            !Number.isInteger(
+                threshold
+            )
+        ) {
+            return "Every variant must have a valid whole-number low-stock threshold";
+        }
+
+        // ------------------------------------------------------
+        // SKU
+        // ------------------------------------------------------
+
+        const sku =
+            typeof variant.sku ===
+            "string"
+                ? variant.sku.trim()
+                : "";
+
+        if (sku) {
+            const normalizedSku =
+                sku.toLowerCase();
+
+            if (
+                skuSet.has(
+                    normalizedSku
+                )
+            ) {
+                return `Duplicate variant SKU "${sku}"`;
+            }
+
+            skuSet.add(
+                normalizedSku
+            );
         }
 
         // ------------------------------------------------------
@@ -217,7 +445,9 @@ const validateVariants = (
         // ------------------------------------------------------
 
         const selectionEntries =
-            Object.entries(variant.selections);
+            Object.entries(
+                variant.selections
+            );
 
         if (
             selectionEntries.length !==
@@ -226,15 +456,30 @@ const validateVariants = (
             return "Variant selections do not match the product order options";
         }
 
-        for (const [name, value] of selectionEntries) {
-            if (!selectionDefinitions.has(name)) {
+        for (
+            const [
+                name,
+                value,
+            ] of selectionEntries
+        ) {
+            if (
+                !selectionDefinitions.has(
+                    name
+                )
+            ) {
                 return `Unknown variant option "${name}"`;
             }
 
             const allowedValues =
-                selectionDefinitions.get(name);
+                selectionDefinitions.get(
+                    name
+                );
 
-            if (!allowedValues.has(String(value).trim())) {
+            if (
+                !allowedValues.has(
+                    String(value).trim()
+                )
+            ) {
                 return `Invalid value "${value}" for option "${name}"`;
             }
         }
@@ -244,23 +489,35 @@ const validateVariants = (
         // ------------------------------------------------------
 
         const combinationKey =
-            selectionDefinitions.size > 0
-                ? Array.from(selectionDefinitions.keys())
+            selectionDefinitions.size >
+            0
+                ? Array.from(
+                      selectionDefinitions.keys()
+                  )
                       .sort()
                       .map(
                           (name) =>
                               `${name}=${String(
-                                  variant.selections[name]
+                                  variant
+                                      .selections[
+                                      name
+                                  ]
                               ).trim()}`
                       )
                       .join("|")
                 : "";
 
-        if (combinationKeys.has(combinationKey)) {
+        if (
+            combinationKeys.has(
+                combinationKey
+            )
+        ) {
             return "Duplicate variant combination found";
         }
 
-        combinationKeys.add(combinationKey);
+        combinationKeys.add(
+            combinationKey
+        );
     }
 
     return null;
@@ -272,7 +529,10 @@ const validateVariants = (
 // @access Public
 // ============================================================
 
-export const getProducts = async (req, res) => {
+export const getProducts = async (
+    req,
+    res
+) => {
     try {
         const {
             status,
@@ -287,56 +547,75 @@ export const getProducts = async (req, res) => {
             filter.status = status;
         }
 
-        if (featured !== undefined) {
+        if (
+            featured !==
+            undefined
+        ) {
             filter.featured =
                 featured === "true";
         }
 
         if (category) {
-            filter.category = category;
+            filter.category =
+                category;
         }
 
-        let query = Product.find(filter)
-            .populate(
-                "category",
-                "name slug status"
-            )
-            .sort({
-                createdAt: -1,
-            });
+        let query =
+            Product.find(filter)
+                .populate(
+                    "category",
+                    "name slug status"
+                )
+                .sort({
+                    createdAt: -1,
+                });
 
         if (limit) {
             const parsedLimit =
-                Number.parseInt(limit, 10);
+                Number.parseInt(
+                    limit,
+                    10
+                );
 
             if (
-                Number.isInteger(parsedLimit) &&
+                Number.isInteger(
+                    parsedLimit
+                ) &&
                 parsedLimit > 0
             ) {
-                query = query.limit(
-                    Math.min(parsedLimit, 20)
-                );
+                query =
+                    query.limit(
+                        Math.min(
+                            parsedLimit,
+                            20
+                        )
+                    );
             }
         }
 
-        const products = await query;
+        const products =
+            await query;
 
-        return res.status(200).json({
-            success: true,
-            products,
-        });
+        return res
+            .status(200)
+            .json({
+                success: true,
+                products,
+            });
     } catch (error) {
         console.error(
             "GET PRODUCTS ERROR:",
             error
         );
 
-        return res.status(500).json({
-            success: false,
-            message:
-                error.message ||
-                "Failed to fetch products",
-        });
+        return res
+            .status(500)
+            .json({
+                success: false,
+                message:
+                    error.message ||
+                    "Failed to fetch products",
+            });
     }
 };
 
@@ -346,9 +625,13 @@ export const getProducts = async (req, res) => {
 // @access Public
 // ============================================================
 
-export const getProduct = async (req, res) => {
+export const getProduct = async (
+    req,
+    res
+) => {
     try {
-        const identifier = req.params.id;
+        const identifier =
+            req.params.id;
 
         let product;
 
@@ -369,7 +652,8 @@ export const getProduct = async (req, res) => {
         if (!product) {
             product =
                 await Product.findOne({
-                    slug: identifier.toLowerCase(),
+                    slug:
+                        identifier.toLowerCase(),
                 }).populate(
                     "category",
                     "name slug status"
@@ -377,28 +661,35 @@ export const getProduct = async (req, res) => {
         }
 
         if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found",
-            });
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
         }
 
-        return res.status(200).json({
-            success: true,
-            product,
-        });
+        return res
+            .status(200)
+            .json({
+                success: true,
+                product,
+            });
     } catch (error) {
         console.error(
             "GET PRODUCT ERROR:",
             error
         );
 
-        return res.status(500).json({
-            success: false,
-            message:
-                error.message ||
-                "Failed to fetch product",
-        });
+        return res
+            .status(500)
+            .json({
+                success: false,
+                message:
+                    error.message ||
+                    "Failed to fetch product",
+            });
     }
 };
 
@@ -408,7 +699,10 @@ export const getProduct = async (req, res) => {
 // @access Admin
 // ============================================================
 
-export const createProduct = async (req, res) => {
+export const createProduct = async (
+    req,
+    res
+) => {
     try {
         const {
             category,
@@ -425,6 +719,8 @@ export const createProduct = async (req, res) => {
             options,
             orderSelections,
             variants,
+            stock,
+            lowStockThreshold,
         } = req.body;
 
         // ====================================================
@@ -432,19 +728,26 @@ export const createProduct = async (req, res) => {
         // ====================================================
 
         if (!category) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Product category is required",
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Product category is required",
+                });
         }
 
-        if (!name || !name.trim()) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Product name is required",
-            });
+        if (
+            !name ||
+            !name.trim()
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Product name is required",
+                });
         }
 
         // ====================================================
@@ -452,14 +755,18 @@ export const createProduct = async (req, res) => {
         // ====================================================
 
         if (
-            pricingType !== "fixed" &&
-            pricingType !== "variants"
+            pricingType !==
+                "fixed" &&
+            pricingType !==
+                "variants"
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    'Pricing type must be either "fixed" or "variants"',
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        'Pricing type must be either "fixed" or "variants"',
+                });
         }
 
         // ====================================================
@@ -471,22 +778,28 @@ export const createProduct = async (req, res) => {
             : generateSlug(name);
 
         if (!slug) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Unable to generate product slug",
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Unable to generate product slug",
+                });
         }
 
         const existingProduct =
-            await Product.findOne({ slug });
+            await Product.findOne({
+                slug,
+            });
 
         if (existingProduct) {
-            return res.status(409).json({
-                success: false,
-                message:
-                    "A product with this slug already exists",
-            });
+            return res
+                .status(409)
+                .json({
+                    success: false,
+                    message:
+                        "A product with this slug already exists",
+                });
         }
 
         // ====================================================
@@ -494,24 +807,38 @@ export const createProduct = async (req, res) => {
         // ====================================================
 
         const parsedOptions =
-            parseJsonField(options, []);
+            parseJsonField(
+                options,
+                []
+            );
 
-        if (!Array.isArray(parsedOptions)) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Product options must be an array",
-            });
+        if (
+            !Array.isArray(
+                parsedOptions
+            )
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Product options must be an array",
+                });
         }
 
         const optionsError =
-            validateOptions(parsedOptions);
+            validateOptions(
+                parsedOptions
+            );
 
         if (optionsError) {
-            return res.status(400).json({
-                success: false,
-                message: optionsError,
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        optionsError,
+                });
         }
 
         // ====================================================
@@ -529,11 +856,13 @@ export const createProduct = async (req, res) => {
                 parsedOrderSelections
             )
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Order selections must be an array",
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Order selections must be an array",
+                });
         }
 
         const orderSelectionError =
@@ -541,53 +870,135 @@ export const createProduct = async (req, res) => {
                 parsedOrderSelections
             );
 
-        if (orderSelectionError) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    orderSelectionError,
-            });
+        if (
+            orderSelectionError
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        orderSelectionError,
+                });
         }
 
         // ====================================================
-        // PRICING
+        // PRICING + INVENTORY
         // ====================================================
 
         let parsedPrice = null;
+        let parsedStock = 0;
+        let parsedLowStockThreshold = 5;
         let parsedVariants = [];
 
-        if (pricingType === "fixed") {
+        // ====================================================
+        // FIXED
+        // ====================================================
+
+        if (
+            pricingType ===
+            "fixed"
+        ) {
             if (
-                price === undefined ||
+                price ===
+                    undefined ||
                 price === ""
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Product price is required for fixed pricing",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Product price is required for fixed pricing",
+                    });
             }
 
-            parsedPrice = Number(price);
+            parsedPrice =
+                Number(price);
 
             if (
-                !Number.isFinite(parsedPrice) ||
+                !Number.isFinite(
+                    parsedPrice
+                ) ||
                 parsedPrice < 0
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Price must be a valid non-negative number",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Price must be a valid non-negative number",
+                    });
             }
 
-            // Fixed products must not have variants.
+            // ------------------------------------------------
+            // STOCK
+            // ------------------------------------------------
+
+            const stockResult =
+                parseStock(
+                    stock,
+                    "Product stock"
+                );
+
+            if (
+                stockResult.error
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            stockResult.error,
+                    });
+            }
+
+            parsedStock =
+                stockResult.value;
+
+            // ------------------------------------------------
+            // LOW STOCK THRESHOLD
+            // ------------------------------------------------
+
+            const thresholdResult =
+                parseLowStockThreshold(
+                    lowStockThreshold,
+                    5,
+                    "Low stock threshold"
+                );
+
+            if (
+                thresholdResult.error
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            thresholdResult.error,
+                    });
+            }
+
+            parsedLowStockThreshold =
+                thresholdResult.value;
+
+            // Fixed products cannot have variants.
             parsedVariants = [];
         }
 
-        if (pricingType === "variants") {
-            // Variant pricing does not use base price.
+        // ====================================================
+        // VARIANT PRICING
+        // ====================================================
+
+        if (
+            pricingType ===
+            "variants"
+        ) {
             parsedPrice = null;
+
+            // Product-level stock is not used.
+            parsedStock = 0;
+            parsedLowStockThreshold = 0;
 
             parsedVariants =
                 parseJsonField(
@@ -600,11 +1011,13 @@ export const createProduct = async (req, res) => {
                     parsedVariants
                 )
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Variants must be an array",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Variants must be an array",
+                    });
             }
 
             const variantError =
@@ -614,11 +1027,48 @@ export const createProduct = async (req, res) => {
                 );
 
             if (variantError) {
-                return res.status(400).json({
-                    success: false,
-                    message: variantError,
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            variantError,
+                    });
             }
+
+            // Normalize variant inventory
+            parsedVariants =
+                parsedVariants.map(
+                    (variant) => ({
+                        ...variant,
+
+                        price: Number(
+                            variant.price
+                        ),
+
+                        sku:
+                            typeof variant.sku ===
+                            "string"
+                                ? variant.sku.trim()
+                                : "",
+
+                        stock: Number(
+                            variant.stock
+                        ),
+
+                        lowStockThreshold:
+                            variant.lowStockThreshold ===
+                                undefined ||
+                            variant.lowStockThreshold ===
+                                null ||
+                            variant.lowStockThreshold ===
+                                ""
+                                ? 5
+                                : Number(
+                                      variant.lowStockThreshold
+                                  ),
+                    })
+                );
         }
 
         // ====================================================
@@ -637,22 +1087,33 @@ export const createProduct = async (req, res) => {
 
         const imageUrls = [];
 
-        if (req.files?.length) {
-            if (req.files.length > 10) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Maximum 10 images allowed",
-                });
-            }
-
-            for (const file of req.files) {
-                if (!file.buffer) {
-                    return res.status(400).json({
+        if (
+            req.files?.length
+        ) {
+            if (
+                req.files.length >
+                10
+            ) {
+                return res
+                    .status(400)
+                    .json({
                         success: false,
                         message:
-                            "Invalid image upload",
+                            "Maximum 10 images allowed",
                     });
+            }
+
+            for (
+                const file of req.files
+            ) {
+                if (!file.buffer) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Invalid image upload",
+                        });
                 }
 
                 const url =
@@ -660,7 +1121,9 @@ export const createProduct = async (req, res) => {
                         file.buffer
                     );
 
-                imageUrls.push(url);
+                imageUrls.push(
+                    url
+                );
             }
         }
 
@@ -671,17 +1134,33 @@ export const createProduct = async (req, res) => {
         const product =
             await Product.create({
                 category,
-                name: name.trim(),
+
+                name:
+                    name.trim(),
+
                 slug,
+
                 description:
-                    description?.trim() || "",
+                    description?.trim() ||
+                    "",
 
                 pricingType,
-                price: parsedPrice,
 
-                images: imageUrls,
+                price:
+                    parsedPrice,
 
-                options: parsedOptions,
+                // FIXED PRODUCT INVENTORY
+                stock:
+                    parsedStock,
+
+                lowStockThreshold:
+                    parsedLowStockThreshold,
+
+                images:
+                    imageUrls,
+
+                options:
+                    parsedOptions,
 
                 orderSelections:
                     parsedOrderSelections,
@@ -690,6 +1169,7 @@ export const createProduct = async (req, res) => {
                     parsedVariants,
 
                 status,
+
                 featured:
                     parsedFeatured,
             });
@@ -706,11 +1186,13 @@ export const createProduct = async (req, res) => {
                 "name slug status"
             );
 
-        return res.status(201).json({
-            success: true,
-            product:
-                populatedProduct,
-        });
+        return res
+            .status(201)
+            .json({
+                success: true,
+                product:
+                    populatedProduct,
+            });
     } catch (error) {
         console.error(
             "CREATE PRODUCT ERROR:",
@@ -721,34 +1203,43 @@ export const createProduct = async (req, res) => {
             error.name ===
             "ValidationError"
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    Object.values(
-                        error.errors
-                    )
-                        .map(
-                            (err) =>
-                                err.message
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        Object.values(
+                            error.errors
                         )
-                        .join(", "),
-            });
+                            .map(
+                                (err) =>
+                                    err.message
+                            )
+                            .join(", "),
+                });
         }
 
-        if (error.code === 11000) {
-            return res.status(409).json({
+        if (
+            error.code ===
+            11000
+        ) {
+            return res
+                .status(409)
+                .json({
+                    success: false,
+                    message:
+                        "A product with this slug already exists",
+                });
+        }
+
+        return res
+            .status(500)
+            .json({
                 success: false,
                 message:
-                    "A product with this slug already exists",
+                    error.message ||
+                    "Failed to create product",
             });
-        }
-
-        return res.status(500).json({
-            success: false,
-            message:
-                error.message ||
-                "Failed to create product",
-        });
     }
 };
 
@@ -758,7 +1249,10 @@ export const createProduct = async (req, res) => {
 // @access Admin
 // ============================================================
 
-export const updateProduct = async (req, res) => {
+export const updateProduct = async (
+    req,
+    res
+) => {
     try {
         const product =
             await Product.findById(
@@ -766,11 +1260,13 @@ export const updateProduct = async (req, res) => {
             );
 
         if (!product) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Product not found",
-            });
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
         }
 
         const {
@@ -789,6 +1285,8 @@ export const updateProduct = async (req, res) => {
             orderSelections,
             variants,
             existingImages,
+            stock,
+            lowStockThreshold,
         } = req.body;
 
         // ====================================================
@@ -796,7 +1294,8 @@ export const updateProduct = async (req, res) => {
         // ====================================================
 
         const finalCategory =
-            category || product.category;
+            category ||
+            product.category;
 
         // ====================================================
         // NAME
@@ -813,23 +1312,32 @@ export const updateProduct = async (req, res) => {
         let finalSlug =
             product.slug;
 
-        if (slug !== undefined) {
-            finalSlug =
-                generateSlug(slug);
-        } else if (
-            name &&
-            name.trim() !== product.name
+        if (
+            slug !== undefined
         ) {
             finalSlug =
-                generateSlug(name);
+                generateSlug(
+                    slug
+                );
+        } else if (
+            name &&
+            name.trim() !==
+                product.name
+        ) {
+            finalSlug =
+                generateSlug(
+                    name
+                );
         }
 
         if (!finalSlug) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Unable to generate product slug",
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Unable to generate product slug",
+                });
         }
 
         const slugConflict =
@@ -842,11 +1350,13 @@ export const updateProduct = async (req, res) => {
             });
 
         if (slugConflict) {
-            return res.status(409).json({
-                success: false,
-                message:
-                    "Another product uses this slug",
-            });
+            return res
+                .status(409)
+                .json({
+                    success: false,
+                    message:
+                        "Another product uses this slug",
+                });
         }
 
         // ====================================================
@@ -859,14 +1369,18 @@ export const updateProduct = async (req, res) => {
             "fixed";
 
         if (
-            finalPricingType !== "fixed" &&
-            finalPricingType !== "variants"
+            finalPricingType !==
+                "fixed" &&
+            finalPricingType !==
+                "variants"
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    'Pricing type must be either "fixed" or "variants"',
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        'Pricing type must be either "fixed" or "variants"',
+                });
         }
 
         // ====================================================
@@ -874,21 +1388,31 @@ export const updateProduct = async (req, res) => {
         // ====================================================
 
         let parsedOptions =
-            product.options || [];
+            product.options ||
+            [];
 
-        if (options !== undefined) {
+        if (
+            options !==
+            undefined
+        ) {
             parsedOptions =
                 parseJsonField(
                     options,
                     null
                 );
 
-            if (!Array.isArray(parsedOptions)) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Product options must be an array",
-                });
+            if (
+                !Array.isArray(
+                    parsedOptions
+                )
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Product options must be an array",
+                    });
             }
         }
 
@@ -898,10 +1422,13 @@ export const updateProduct = async (req, res) => {
             );
 
         if (optionsError) {
-            return res.status(400).json({
-                success: false,
-                message: optionsError,
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        optionsError,
+                });
         }
 
         // ====================================================
@@ -913,7 +1440,8 @@ export const updateProduct = async (req, res) => {
             [];
 
         if (
-            orderSelections !== undefined
+            orderSelections !==
+            undefined
         ) {
             parsedOrderSelections =
                 parseJsonField(
@@ -926,11 +1454,13 @@ export const updateProduct = async (req, res) => {
                     parsedOrderSelections
                 )
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Order selections must be an array",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Order selections must be an array",
+                    });
             }
         }
 
@@ -939,29 +1469,53 @@ export const updateProduct = async (req, res) => {
                 parsedOrderSelections
             );
 
-        if (orderSelectionError) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    orderSelectionError,
-            });
+        if (
+            orderSelectionError
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        orderSelectionError,
+                });
         }
 
         // ====================================================
-        // PRICING
+        // PRICING + INVENTORY
         // ====================================================
 
         let finalPrice =
-            product.price ?? null;
+            product.price ??
+            null;
+
+        let finalStock =
+            product.stock ??
+            0;
+
+        let finalLowStockThreshold =
+            product.lowStockThreshold ??
+            5;
 
         let finalVariants =
-            product.variants || [];
+            product.variants ||
+            [];
+
+        // ====================================================
+        // FIXED PRICING
+        // ====================================================
 
         if (
-            finalPricingType === "fixed"
+            finalPricingType ===
+            "fixed"
         ) {
+            // ------------------------------------------------
+            // PRICE
+            // ------------------------------------------------
+
             if (
-                price !== undefined &&
+                price !==
+                    undefined &&
                 price !== ""
             ) {
                 finalPrice =
@@ -969,24 +1523,93 @@ export const updateProduct = async (req, res) => {
             }
 
             if (
-                finalPrice === null ||
+                finalPrice ===
+                    null ||
                 !Number.isFinite(
                     finalPrice
                 ) ||
                 finalPrice < 0
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Product price is required for fixed pricing",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Product price is required for fixed pricing",
+                    });
             }
 
-            // Important:
-            // Remove old variants when switching
-            // back to fixed pricing.
+            // ------------------------------------------------
+            // STOCK
+            //
+            // If frontend sends stock, update it.
+            // Otherwise preserve current stock.
+            // ------------------------------------------------
+
+            if (
+                stock !==
+                undefined
+            ) {
+                const stockResult =
+                    parseStock(
+                        stock,
+                        "Product stock"
+                    );
+
+                if (
+                    stockResult.error
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                stockResult.error,
+                        });
+                }
+
+                finalStock =
+                    stockResult.value;
+            }
+
+            // ------------------------------------------------
+            // LOW STOCK THRESHOLD
+            // ------------------------------------------------
+
+            if (
+                lowStockThreshold !==
+                undefined
+            ) {
+                const thresholdResult =
+                    parseLowStockThreshold(
+                        lowStockThreshold,
+                        5,
+                        "Low stock threshold"
+                    );
+
+                if (
+                    thresholdResult.error
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                thresholdResult.error,
+                        });
+                }
+
+                finalLowStockThreshold =
+                    thresholdResult.value;
+            }
+
+            // Fixed product has no variants.
             finalVariants = [];
         }
+
+        // ====================================================
+        // VARIANT PRICING
+        // ====================================================
 
         if (
             finalPricingType ===
@@ -994,8 +1617,13 @@ export const updateProduct = async (req, res) => {
         ) {
             finalPrice = null;
 
+            // Product-level stock is unused.
+            finalStock = 0;
+            finalLowStockThreshold = 0;
+
             if (
-                variants !== undefined
+                variants !==
+                undefined
             ) {
                 finalVariants =
                     parseJsonField(
@@ -1009,11 +1637,13 @@ export const updateProduct = async (req, res) => {
                     finalVariants
                 )
             ) {
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        "Variants must be an array",
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Variants must be an array",
+                    });
             }
 
             const variantError =
@@ -1023,11 +1653,50 @@ export const updateProduct = async (req, res) => {
                 );
 
             if (variantError) {
-                return res.status(400).json({
-                    success: false,
-                    message: variantError,
-                });
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            variantError,
+                    });
             }
+
+            // Normalize variants.
+            finalVariants =
+                finalVariants.map(
+                    (variant) => ({
+                        ...variant,
+
+                        price:
+                            Number(
+                                variant.price
+                            ),
+
+                        sku:
+                            typeof variant.sku ===
+                            "string"
+                                ? variant.sku.trim()
+                                : "",
+
+                        stock:
+                            Number(
+                                variant.stock
+                            ),
+
+                        lowStockThreshold:
+                            variant.lowStockThreshold ===
+                                undefined ||
+                            variant.lowStockThreshold ===
+                                null ||
+                            variant.lowStockThreshold ===
+                                ""
+                                ? 5
+                                : Number(
+                                      variant.lowStockThreshold
+                                  ),
+                    })
+                );
         }
 
         // ====================================================
@@ -1038,7 +1707,8 @@ export const updateProduct = async (req, res) => {
             product.featured;
 
         if (
-            featured !== undefined
+            featured !==
+            undefined
         ) {
             finalFeatured =
                 parseBoolean(
@@ -1052,10 +1722,12 @@ export const updateProduct = async (req, res) => {
         // ====================================================
 
         let finalImages =
-            product.images || [];
+            product.images ||
+            [];
 
         if (
-            existingImages !== undefined
+            existingImages !==
+            undefined
         ) {
             const parsedExistingImages =
                 parseJsonField(
@@ -1074,8 +1746,9 @@ export const updateProduct = async (req, res) => {
                 typeof existingImages ===
                 "string"
             ) {
-                finalImages =
-                    [existingImages];
+                finalImages = [
+                    existingImages,
+                ];
             }
         }
 
@@ -1087,13 +1760,17 @@ export const updateProduct = async (req, res) => {
             req.files &&
             req.files.length > 0
         ) {
-            for (const file of req.files) {
+            for (
+                const file of req.files
+            ) {
                 if (!file.buffer) {
-                    return res.status(400).json({
-                        success: false,
-                        message:
-                            "Invalid image upload",
-                    });
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Invalid image upload",
+                        });
                 }
 
                 const url =
@@ -1101,18 +1778,23 @@ export const updateProduct = async (req, res) => {
                         file.buffer
                     );
 
-                finalImages.push(url);
+                finalImages.push(
+                    url
+                );
             }
         }
 
         if (
-            finalImages.length > 10
+            finalImages.length >
+            10
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    "Maximum 10 images allowed",
-            });
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Maximum 10 images allowed",
+                });
         }
 
         // ====================================================
@@ -1144,6 +1826,14 @@ export const updateProduct = async (req, res) => {
                     price:
                         finalPrice,
 
+                    // FIXED PRODUCT INVENTORY
+                    stock:
+                        finalStock,
+
+                    lowStockThreshold:
+                        finalLowStockThreshold,
+
+                    // VARIANT INVENTORY
                     variants:
                         finalVariants,
 
@@ -1172,11 +1862,13 @@ export const updateProduct = async (req, res) => {
                 "name slug status"
             );
 
-        return res.status(200).json({
-            success: true,
-            product:
-                updatedProduct,
-        });
+        return res
+            .status(200)
+            .json({
+                success: true,
+                product:
+                    updatedProduct,
+            });
     } catch (error) {
         console.error(
             "UPDATE PRODUCT ERROR:",
@@ -1187,45 +1879,56 @@ export const updateProduct = async (req, res) => {
             error.name ===
             "CastError"
         ) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Product not found",
-            });
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
         }
 
         if (
             error.name ===
             "ValidationError"
         ) {
-            return res.status(400).json({
-                success: false,
-                message:
-                    Object.values(
-                        error.errors
-                    )
-                        .map(
-                            (err) =>
-                                err.message
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        Object.values(
+                            error.errors
                         )
-                        .join(", "),
-            });
+                            .map(
+                                (err) =>
+                                    err.message
+                            )
+                            .join(", "),
+                });
         }
 
-        if (error.code === 11000) {
-            return res.status(409).json({
+        if (
+            error.code ===
+            11000
+        ) {
+            return res
+                .status(409)
+                .json({
+                    success: false,
+                    message:
+                        "Another product uses this slug",
+                });
+        }
+
+        return res
+            .status(500)
+            .json({
                 success: false,
                 message:
-                    "Another product uses this slug",
+                    error.message ||
+                    "Failed to update product",
             });
-        }
-
-        return res.status(500).json({
-            success: false,
-            message:
-                error.message ||
-                "Failed to update product",
-        });
     }
 };
 
@@ -1246,20 +1949,24 @@ export const deleteProduct = async (
             );
 
         if (!product) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Product not found",
-            });
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
         }
 
         await product.deleteOne();
 
-        return res.status(200).json({
-            success: true,
-            message:
-                "Product deleted successfully",
-        });
+        return res
+            .status(200)
+            .json({
+                success: true,
+                message:
+                    "Product deleted successfully",
+            });
     } catch (error) {
         console.error(
             "DELETE PRODUCT ERROR:",
@@ -1270,18 +1977,22 @@ export const deleteProduct = async (
             error.name ===
             "CastError"
         ) {
-            return res.status(404).json({
-                success: false,
-                message:
-                    "Product not found",
-            });
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
         }
 
-        return res.status(500).json({
-            success: false,
-            message:
-                error.message ||
-                "Failed to delete product",
-        });
+        return res
+            .status(500)
+            .json({
+                success: false,
+                message:
+                    error.message ||
+                    "Failed to delete product",
+            });
     }
 };

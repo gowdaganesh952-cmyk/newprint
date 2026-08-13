@@ -25,17 +25,6 @@ interface ProductFormProps {
 // ============================================================
 // HELPER
 // Generate every possible combination of order selections.
-// Example:
-//
-// Size: S, M
-// Color: Black, White
-//
-// Generates:
-//
-// S + Black
-// S + White
-// M + Black
-// M + White
 // ============================================================
 
 function generateVariantCombinations(
@@ -165,12 +154,52 @@ export default function ProductForm({
       : ""
   );
 
+  // ==========================================================
+  // FIXED PRODUCT INVENTORY
+  // ==========================================================
+
+  const [stock, setStock] = useState<string>(
+    initialData?.stock !== undefined &&
+      initialData?.stock !== null
+      ? String(initialData.stock)
+      : "0"
+  );
+
+  const [lowStockThreshold, setLowStockThreshold] =
+    useState<string>(
+      initialData?.lowStockThreshold !== undefined &&
+        initialData?.lowStockThreshold !== null
+        ? String(initialData.lowStockThreshold)
+        : "5"
+    );
+
+  // ==========================================================
+  // VARIANTS
+  // ==========================================================
+
   const [variants, setVariants] = useState<
     ProductVariant[]
   >(
     initialData?.variants?.map((variant) => ({
       ...variant,
       selections: { ...variant.selections },
+      price:
+        Number.isFinite(variant.price)
+          ? variant.price
+          : 0,
+      sku: variant.sku || "",
+      stock:
+        Number.isFinite(variant.stock)
+          ? variant.stock
+          : 0,
+      lowStockThreshold:
+        Number.isFinite(
+          variant.lowStockThreshold
+        )
+          ? variant.lowStockThreshold
+          : 5,
+      status:
+        variant.status || "active",
     })) || []
   );
 
@@ -583,12 +612,6 @@ export default function ProductForm({
 
   // ==========================================================
   // GENERATED VARIANTS
-  //
-  // When order selections change, generate the combinations.
-  //
-  // IMPORTANT:
-  // Existing prices are preserved whenever the same
-  // combination already exists.
   // ==========================================================
 
   const generatedCombinations = useMemo(() => {
@@ -600,6 +623,14 @@ export default function ProductForm({
       orderSelections
     );
   }, [orderSelections, pricingType]);
+
+  // ==========================================================
+  // GENERATE / UPDATE VARIANTS
+  //
+  // IMPORTANT:
+  // Existing price, SKU, stock and threshold are preserved.
+  // New combinations receive default stock = 0.
+  // ==========================================================
 
   useEffect(() => {
     if (pricingType !== "variants") {
@@ -620,8 +651,19 @@ export default function ProductForm({
           return {
             _id: existing?._id,
             selections: combination,
-            price: existing?.price ?? 0,
-            sku: existing?.sku || "",
+
+            price:
+              existing?.price ?? 0,
+
+            sku:
+              existing?.sku || "",
+
+            stock:
+              existing?.stock ?? 0,
+
+            lowStockThreshold:
+              existing?.lowStockThreshold ?? 5,
+
             status:
               existing?.status || "active",
           };
@@ -680,6 +722,72 @@ export default function ProductForm({
   };
 
   // ==========================================================
+  // UPDATE VARIANT STOCK
+  // ==========================================================
+
+  const updateVariantStock = (
+    index: number,
+    value: string
+  ) => {
+    const numericValue =
+      value === ""
+        ? 0
+        : Number(value);
+
+    if (
+      !Number.isFinite(numericValue) ||
+      numericValue < 0
+    ) {
+      return;
+    }
+
+    setVariants((previous) => {
+      const updated = [...previous];
+
+      updated[index] = {
+        ...updated[index],
+        stock: Math.floor(numericValue),
+      };
+
+      return updated;
+    });
+  };
+
+  // ==========================================================
+  // UPDATE VARIANT LOW STOCK THRESHOLD
+  // ==========================================================
+
+  const updateVariantLowStockThreshold = (
+    index: number,
+    value: string
+  ) => {
+    const numericValue =
+      value === ""
+        ? 0
+        : Number(value);
+
+    if (
+      !Number.isFinite(numericValue) ||
+      numericValue < 0
+    ) {
+      return;
+    }
+
+    setVariants((previous) => {
+      const updated = [...previous];
+
+      updated[index] = {
+        ...updated[index],
+        lowStockThreshold: Math.floor(
+          numericValue
+        ),
+      };
+
+      return updated;
+    });
+  };
+
+  // ==========================================================
   // RESET PRICING
   // ==========================================================
 
@@ -720,7 +828,32 @@ export default function ProductForm({
       return "Price cannot be negative.";
     }
 
-    // Product options
+    // ========================================================
+    // FIXED PRODUCT INVENTORY
+    // ========================================================
+
+    if (
+      stock === "" ||
+      Number.isNaN(Number(stock)) ||
+      Number(stock) < 0
+    ) {
+      return "Please enter a valid stock quantity.";
+    }
+
+    if (
+      lowStockThreshold === "" ||
+      Number.isNaN(
+        Number(lowStockThreshold)
+      ) ||
+      Number(lowStockThreshold) < 0
+    ) {
+      return "Please enter a valid low-stock threshold.";
+    }
+
+    // ========================================================
+    // PRODUCT OPTIONS
+    // ========================================================
+
     for (const option of options) {
       if (!option.name.trim()) {
         return "Product option names cannot be empty.";
@@ -731,7 +864,10 @@ export default function ProductForm({
       }
     }
 
-    // Order selections
+    // ========================================================
+    // ORDER SELECTIONS
+    // ========================================================
+
     for (const selection of orderSelections) {
       if (!selection.name.trim()) {
         return "Order-time option names cannot be empty.";
@@ -742,7 +878,10 @@ export default function ProductForm({
       }
     }
 
-    // Fixed pricing
+    // ========================================================
+    // FIXED PRICING
+    // ========================================================
+
     if (pricingType === "fixed") {
       if (price === "") {
         return "Please enter a product price.";
@@ -753,7 +892,10 @@ export default function ProductForm({
       }
     }
 
-    // Variant pricing
+    // ========================================================
+    // VARIANT PRICING
+    // ========================================================
+
     if (pricingType === "variants") {
       if (orderSelections.length === 0) {
         return "Add at least one order-time option before using variant pricing.";
@@ -763,8 +905,11 @@ export default function ProductForm({
         return "Add values to your order-time options before setting variant prices.";
       }
 
-      if (variants.length !== generatedCombinations.length) {
-        return "Please wait for the variant prices to generate.";
+      if (
+        variants.length !==
+        generatedCombinations.length
+      ) {
+        return "Please wait for the variants to generate.";
       }
 
       for (const variant of variants) {
@@ -773,6 +918,26 @@ export default function ProductForm({
           variant.price < 0
         ) {
           return `Enter a valid price for ${formatCombination(
+            variant.selections
+          )}.`;
+        }
+
+        if (
+          !Number.isFinite(variant.stock) ||
+          variant.stock < 0
+        ) {
+          return `Enter a valid stock quantity for ${formatCombination(
+            variant.selections
+          )}.`;
+        }
+
+        if (
+          !Number.isFinite(
+            variant.lowStockThreshold
+          ) ||
+          (variant.lowStockThreshold ?? 0) < 0
+        ) {
+          return `Enter a valid low-stock threshold for ${formatCombination(
             variant.selections
           )}.`;
         }
@@ -837,8 +1002,20 @@ export default function ProductForm({
         price
       );
 
-      // Important:
-      // Fixed-price products should not keep old variants.
+      formData.append(
+        "stock",
+        String(Math.floor(Number(stock)))
+      );
+
+      formData.append(
+        "lowStockThreshold",
+        String(
+          Math.floor(
+            Number(lowStockThreshold)
+          )
+        )
+      );
+
       formData.append(
         "variants",
         JSON.stringify([])
@@ -846,9 +1023,6 @@ export default function ProductForm({
     }
 
     if (pricingType === "variants") {
-      // Do not send the fixed price as the active price.
-      //
-      // Backend can store null/empty depending on controller.
       formData.append(
         "price",
         ""
@@ -856,7 +1030,31 @@ export default function ProductForm({
 
       formData.append(
         "variants",
-        JSON.stringify(variants)
+        JSON.stringify(
+          variants.map((variant) => ({
+            ...variant,
+            stock: Math.floor(
+              Number(variant.stock) || 0
+            ),
+            lowStockThreshold: Math.floor(
+              Number(
+                variant.lowStockThreshold
+              ) || 0
+            ),
+          }))
+        )
+      );
+
+      // Variant products don't use the
+      // product-level stock.
+      formData.append(
+        "stock",
+        "0"
+      );
+
+      formData.append(
+        "lowStockThreshold",
+        "0"
       );
     }
 
@@ -904,7 +1102,10 @@ export default function ProductForm({
     try {
       setIsSubmitting(true);
 
-      if (isEditing && initialData) {
+      if (
+        isEditing &&
+        initialData
+      ) {
         await api.put(
           `/api/products/${initialData._id}`,
           formData
@@ -980,7 +1181,9 @@ export default function ProductForm({
         <button
           type="button"
           onClick={() =>
-            router.push("/admin/categories")
+            router.push(
+              "/admin/categories"
+            )
           }
           className="mt-6 rounded-[9px] bg-[#0A1B2E] px-4 py-2 text-sm font-semibold text-white"
         >
@@ -1012,6 +1215,7 @@ export default function ProductForm({
       ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
+
         <h2 className="text-lg font-bold text-[#0A1B2E]">
           Product Category
         </h2>
@@ -1030,15 +1234,18 @@ export default function ProductForm({
             [ Select Category ]
           </option>
 
-          {categories.map((category) => (
-            <option
-              key={category._id}
-              value={category._id}
-            >
-              {category.name}
-            </option>
-          ))}
+          {categories.map(
+            (category) => (
+              <option
+                key={category._id}
+                value={category._id}
+              >
+                {category.name}
+              </option>
+            )
+          )}
         </select>
+
       </div>
 
       {/* ======================================================
@@ -1046,6 +1253,7 @@ export default function ProductForm({
       ======================================================= */}
 
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
+
         <h2 className="text-lg font-bold text-[#0A1B2E]">
           Product Information
         </h2>
@@ -1055,6 +1263,7 @@ export default function ProductForm({
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
             <div>
+
               <label className="block text-sm font-medium text-[#0A1B2E]">
                 Name *
               </label>
@@ -1068,9 +1277,11 @@ export default function ProductForm({
                 placeholder="Example: Custom Printed T-Shirt"
                 className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
               />
+
             </div>
 
             <div>
+
               <label className="block text-sm font-medium text-[#0A1B2E]">
                 Slug
               </label>
@@ -1085,11 +1296,13 @@ export default function ProductForm({
                 placeholder="custom-printed-t-shirt"
                 className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
               />
+
             </div>
 
           </div>
 
           <div>
+
             <label className="block text-sm font-medium text-[#0A1B2E]">
               Description
             </label>
@@ -1098,14 +1311,18 @@ export default function ProductForm({
               rows={4}
               value={description}
               onChange={(e) =>
-                setDescription(e.target.value)
+                setDescription(
+                  e.target.value
+                )
               }
               placeholder="Describe the product..."
               className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
             />
+
           </div>
 
         </div>
+
       </div>
 
       {/* ======================================================
@@ -1115,14 +1332,17 @@ export default function ProductForm({
       <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
 
         <div>
+
           <h2 className="text-lg font-bold text-[#0A1B2E]">
             Pricing
           </h2>
 
           <p className="mt-1 text-sm text-[#64748B]">
-            Choose whether this product has one price or
-            different prices based on customer selections.
+            Choose whether this product has one price
+            or different prices based on customer
+            selections.
           </p>
+
         </div>
 
         {/* PRICING TYPE */}
@@ -1142,6 +1362,7 @@ export default function ProductForm({
                 : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
             }`}
           >
+
             <div className="flex items-start gap-3">
 
               <div
@@ -1153,6 +1374,7 @@ export default function ProductForm({
               />
 
               <div>
+
                 <p className="text-sm font-bold text-[#0A1B2E]">
                   Single Price
                 </p>
@@ -1161,9 +1383,11 @@ export default function ProductForm({
                   One price for the entire product.
                   Options can still exist.
                 </p>
+
               </div>
 
             </div>
+
           </button>
 
           {/* VARIANTS */}
@@ -1171,7 +1395,9 @@ export default function ProductForm({
           <button
             type="button"
             onClick={() =>
-              changePricingType("variants")
+              changePricingType(
+                "variants"
+              )
             }
             className={`rounded-[10px] border p-4 text-left transition ${
               pricingType === "variants"
@@ -1179,6 +1405,7 @@ export default function ProductForm({
                 : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
             }`}
           >
+
             <div className="flex items-start gap-3">
 
               <div
@@ -1190,6 +1417,7 @@ export default function ProductForm({
               />
 
               <div>
+
                 <p className="text-sm font-bold text-[#0A1B2E]">
                   Price varies by options
                 </p>
@@ -1198,14 +1426,18 @@ export default function ProductForm({
                   Different selections can have
                   different prices.
                 </p>
+
               </div>
 
             </div>
+
           </button>
 
         </div>
 
-        {/* FIXED PRICE */}
+        {/* ====================================================
+            FIXED PRICE
+        ===================================================== */}
 
         {pricingType === "fixed" && (
           <div className="mt-5 max-w-xs">
@@ -1226,7 +1458,9 @@ export default function ProductForm({
                 step="0.01"
                 value={price}
                 onChange={(e) =>
-                  setPrice(e.target.value)
+                  setPrice(
+                    e.target.value
+                  )
                 }
                 placeholder="399"
                 className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
@@ -1236,15 +1470,17 @@ export default function ProductForm({
 
             {orderSelections.length > 0 && (
               <p className="mt-2 text-xs leading-5 text-[#64748B]">
-                All customer selections will use this
-                same price.
+                All customer selections will use
+                this same price.
               </p>
             )}
 
           </div>
         )}
 
-        {/* VARIANT PRICING */}
+        {/* ====================================================
+            VARIANT PRICING
+        ===================================================== */}
 
         {pricingType === "variants" && (
           <div className="mt-5">
@@ -1258,9 +1494,10 @@ export default function ProductForm({
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-[#64748B]">
-                  Add options such as Size, Capacity,
-                  Color, or Material in the Order-Time
-                  Options section below.
+                  Add options such as Size,
+                  Capacity, Color, or Material
+                  in the Order-Time Options
+                  section below.
                 </p>
 
               </div>
@@ -1270,11 +1507,13 @@ export default function ProductForm({
               <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-5">
 
                 <p className="text-sm font-semibold text-amber-800">
-                  Add values to your order-time options.
+                  Add values to your
+                  order-time options.
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-amber-700">
-                  Variant prices will automatically appear
+                  Variant prices and inventory
+                  will automatically appear
                   once the options have values.
                 </p>
 
@@ -1287,14 +1526,17 @@ export default function ProductForm({
                 <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 
                   <div>
+
                     <h3 className="text-sm font-bold text-[#0A1B2E]">
-                      Variant Prices
+                      Variant Pricing & Inventory
                     </h3>
 
                     <p className="mt-1 text-xs text-[#64748B]">
-                      Set the price for every possible
+                      Set price, SKU, stock and
+                      low-stock alert for every
                       customer selection.
                     </p>
+
                   </div>
 
                   <span className="w-fit rounded-full bg-[#F7F7F5] px-3 py-1 text-xs font-semibold text-[#64748B]">
@@ -1308,7 +1550,9 @@ export default function ProductForm({
 
                 <div className="overflow-hidden rounded-[10px] border border-[#E5E7EB]">
 
-                  <div className="hidden grid-cols-[1fr_150px] gap-4 bg-[#F7F7F5] px-4 py-3 sm:grid">
+                  {/* DESKTOP HEADER */}
+
+                  <div className="hidden grid-cols-[1fr_120px_120px_100px] gap-3 bg-[#F7F7F5] px-4 py-3 lg:grid">
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
                       Selection
@@ -1316,6 +1560,14 @@ export default function ProductForm({
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
                       Price
+                    </div>
+
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
+                      SKU
+                    </div>
+
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
+                      Stock
                     </div>
 
                   </div>
@@ -1329,20 +1581,54 @@ export default function ProductForm({
                           key={`${formatCombination(
                             variant.selections
                           )}-${index}`}
-                          className="grid grid-cols-1 gap-3 px-4 py-4 sm:grid-cols-[1fr_150px] sm:items-center sm:gap-4"
+                          className="grid grid-cols-1 gap-4 px-4 py-5 lg:grid-cols-[1fr_120px_120px_100px] lg:items-start lg:gap-3"
                         >
 
+                          {/* SELECTION */}
+
                           <div>
+
                             <p className="text-sm font-semibold text-[#0A1B2E]">
                               {formatCombination(
                                 variant.selections
                               )}
                             </p>
+
+                            <div className="mt-2 flex items-center gap-2">
+
+                              <span
+                                className={`rounded-full px-2 py-1 text-[10px] font-bold ${
+                                  variant.stock === 0
+                                    ? "bg-red-100 text-red-700"
+                                    : variant.stock <=
+                                      (variant.lowStockThreshold ??
+                                        5)
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-green-100 text-green-700"
+                                }`}
+                              >
+                                {variant.stock === 0
+                                  ? "Out of Stock"
+                                  : variant.stock <=
+                                    (variant.lowStockThreshold ??
+                                      5)
+                                  ? "Low Stock"
+                                  : "In Stock"}
+                              </span>
+
+                              <span className="text-[11px] text-[#94A3B8]">
+                                {variant.stock} available
+                              </span>
+
+                            </div>
+
                           </div>
+
+                          {/* PRICE */}
 
                           <div>
 
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8] sm:hidden">
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
                               Price
                             </label>
 
@@ -1375,6 +1661,78 @@ export default function ProductForm({
 
                           </div>
 
+                          {/* SKU */}
+
+                          <div>
+
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                              SKU
+                            </label>
+
+                            <input
+                              type="text"
+                              value={
+                                variant.sku || ""
+                              }
+                              onChange={(e) =>
+                                updateVariantSku(
+                                  index,
+                                  e.target.value
+                                )
+                              }
+                              placeholder="TS-BLK-M"
+                              className="w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
+                            />
+
+                          </div>
+
+                          {/* STOCK */}
+
+                          <div>
+
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                              Stock
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={
+                                variant.stock
+                              }
+                              onChange={(e) =>
+                                updateVariantStock(
+                                  index,
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-sm font-semibold outline-none focus:border-[#B9954F]"
+                            />
+
+                            <label className="mb-1 mt-3 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                              Low Stock At
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={
+                                variant.lowStockThreshold ??
+                                5
+                              }
+                              onChange={(e) =>
+                                updateVariantLowStockThreshold(
+                                  index,
+                                  e.target.value
+                                )
+                              }
+                              className="w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
+                            />
+
+                          </div>
+
                         </div>
 
                       )
@@ -1392,6 +1750,152 @@ export default function ProductForm({
         )}
 
       </div>
+
+      {/* ======================================================
+          FIXED PRODUCT INVENTORY
+      ======================================================= */}
+
+      {pricingType === "fixed" && (
+        <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
+
+          <div>
+
+            <h2 className="text-lg font-bold text-[#0A1B2E]">
+              Inventory
+            </h2>
+
+            <p className="mt-1 text-sm leading-5 text-[#64748B]">
+              Set the available quantity for this
+              product. Later, use the Inventory page
+              to add or remove stock without changing
+              the original product information.
+            </p>
+
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+            {/* STOCK */}
+
+            <div>
+
+              <label className="block text-sm font-semibold text-[#0A1B2E]">
+                Initial Stock *
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={stock}
+                onChange={(e) => {
+                  const value =
+                    e.target.value;
+
+                  if (
+                    value === "" ||
+                    (/^\d+$/.test(value) &&
+                      Number(value) >= 0)
+                  ) {
+                    setStock(value);
+                  }
+                }}
+                placeholder="20"
+                className="mt-2 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#B9954F]"
+              />
+
+              <p className="mt-2 text-xs text-[#94A3B8]">
+                Example: 20 units available.
+              </p>
+
+            </div>
+
+            {/* LOW STOCK */}
+
+            <div>
+
+              <label className="block text-sm font-semibold text-[#0A1B2E]">
+                Low Stock Alert
+              </label>
+
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={lowStockThreshold}
+                onChange={(e) => {
+                  const value =
+                    e.target.value;
+
+                  if (
+                    value === "" ||
+                    (/^\d+$/.test(value) &&
+                      Number(value) >= 0)
+                  ) {
+                    setLowStockThreshold(
+                      value
+                    );
+                  }
+                }}
+                placeholder="5"
+                className="mt-2 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#B9954F]"
+              />
+
+              <p className="mt-2 text-xs text-[#94A3B8]">
+                Show a low-stock warning when
+                stock reaches this number.
+              </p>
+
+            </div>
+
+          </div>
+
+          {/* STOCK PREVIEW */}
+
+          <div className="mt-5 rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF9] p-4">
+
+            <div className="flex items-center justify-between gap-4">
+
+              <div>
+
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#94A3B8]">
+                  Current Availability
+                </p>
+
+                <p className="mt-1 text-2xl font-bold text-[#0A1B2E]">
+                  {stock || 0}
+                </p>
+
+              </div>
+
+              <span
+                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                  Number(stock || 0) === 0
+                    ? "bg-red-100 text-red-700"
+                    : Number(stock || 0) <=
+                      Number(
+                        lowStockThreshold || 0
+                      )
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-green-100 text-green-700"
+                }`}
+              >
+                {Number(stock || 0) === 0
+                  ? "Out of Stock"
+                  : Number(stock || 0) <=
+                    Number(
+                      lowStockThreshold || 0
+                    )
+                  ? "Low Stock"
+                  : "In Stock"}
+              </span>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
 
       {/* ======================================================
           IMAGES
@@ -1421,7 +1925,9 @@ export default function ProductForm({
             accept="image/*"
             className="hidden"
             onChange={handleImageUpload}
-            disabled={images.length >= 10}
+            disabled={
+              images.length >= 10
+            }
           />
 
         </label>
@@ -1429,62 +1935,75 @@ export default function ProductForm({
         {images.length > 0 && (
           <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
 
-            {images.map((image, index) => (
-              <div
-                key={`${image.previewUrl}-${index}`}
-                className="group relative flex aspect-square overflow-hidden rounded-[9px] border border-[#E5E7EB] bg-gray-50"
-              >
+            {images.map(
+              (image, index) => (
+                <div
+                  key={`${image.previewUrl}-${index}`}
+                  className="group relative flex aspect-square overflow-hidden rounded-[9px] border border-[#E5E7EB] bg-gray-50"
+                >
 
-                <img
-                  src={image.previewUrl}
-                  alt="Product preview"
-                  className="h-full w-full object-cover"
-                />
+                  <img
+                    src={image.previewUrl}
+                    alt="Product preview"
+                    className="h-full w-full object-cover"
+                  />
 
-                <div className="absolute inset-0 flex flex-col justify-between bg-black/40 p-2 opacity-0 transition-opacity group-hover:opacity-100">
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removeImage(index)
-                    }
-                    className="self-end rounded-full bg-white px-2 py-1 text-sm text-red-600"
-                  >
-                    ✕
-                  </button>
-
-                  <div className="flex justify-between">
+                  <div className="absolute inset-0 flex flex-col justify-between bg-black/40 p-2 opacity-0 transition-opacity group-hover:opacity-100">
 
                     <button
                       type="button"
                       onClick={() =>
-                        moveImage(index, "left")
+                        removeImage(
+                          index
+                        )
                       }
-                      disabled={index === 0}
-                      className="rounded bg-white px-2 py-1 text-xs disabled:opacity-40"
+                      className="self-end rounded-full bg-white px-2 py-1 text-sm text-red-600"
                     >
-                      ←
+                      ✕
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        moveImage(index, "right")
-                      }
-                      disabled={
-                        index === images.length - 1
-                      }
-                      className="rounded bg-white px-2 py-1 text-xs disabled:opacity-40"
-                    >
-                      →
-                    </button>
+                    <div className="flex justify-between">
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          moveImage(
+                            index,
+                            "left"
+                          )
+                        }
+                        disabled={
+                          index === 0
+                        }
+                        className="rounded bg-white px-2 py-1 text-xs disabled:opacity-40"
+                      >
+                        ←
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          moveImage(
+                            index,
+                            "right"
+                          )
+                        }
+                        disabled={
+                          index ===
+                          images.length - 1
+                        }
+                        className="rounded bg-white px-2 py-1 text-xs disabled:opacity-40"
+                      >
+                        →
+                      </button>
+
+                    </div>
 
                   </div>
 
                 </div>
-
-              </div>
-            ))}
+              )
+            )}
 
           </div>
         )}
@@ -1500,14 +2019,16 @@ export default function ProductForm({
         <div className="flex items-center justify-between gap-4">
 
           <div>
+
             <h2 className="text-lg font-bold text-[#0A1B2E]">
               Product Options
             </h2>
 
             <p className="mt-1 text-sm text-[#64748B]">
-              General product information such as material,
-              finish, or style.
+              General product information such as
+              material, finish, or style.
             </p>
+
           </div>
 
           <button
@@ -1532,7 +2053,9 @@ export default function ProductForm({
                 <button
                   type="button"
                   onClick={() =>
-                    removeOption(optionIndex)
+                    removeOption(
+                      optionIndex
+                    )
                   }
                   className="absolute right-3 top-3 text-sm text-red-600 hover:text-red-700"
                 >
@@ -1570,11 +2093,15 @@ export default function ProductForm({
                     <div className="mt-2 flex flex-wrap gap-2">
 
                       {option.values.map(
-                        (value, valueIndex) => (
+                        (
+                          value,
+                          valueIndex
+                        ) => (
                           <span
                             key={valueIndex}
                             className="inline-flex items-center rounded-full bg-[#0A1B2E] px-3 py-1 text-xs text-white"
                           >
+
                             {value}
 
                             <button
@@ -1589,6 +2116,7 @@ export default function ProductForm({
                             >
                               ×
                             </button>
+
                           </span>
                         )
                       )}
@@ -1613,8 +2141,12 @@ export default function ProductForm({
                         })
                       }
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
+                        if (
+                          e.key ===
+                          "Enter"
+                        ) {
                           e.preventDefault();
+
                           addOptionValue(
                             optionIndex
                           );
@@ -1663,15 +2195,17 @@ export default function ProductForm({
             </h2>
 
             <p className="mt-1 max-w-2xl text-sm text-[#64748B]">
-              Options customers choose before adding the
-              product to their cart.
+              Options customers choose before adding
+              the product to their cart.
             </p>
 
           </div>
 
           <button
             type="button"
-            onClick={addOrderSelection}
+            onClick={
+              addOrderSelection
+            }
             className="shrink-0 rounded-[9px] border border-[#E5E7EB] bg-[#F7F7F5] px-3 py-1.5 text-sm font-semibold text-[#0A1B2E] hover:bg-[#EFEFEA]"
           >
             + Add Option
@@ -1688,8 +2222,8 @@ export default function ProductForm({
             </p>
 
             <p className="mt-1 text-xs text-[#94A3B8]">
-              Customers can add this product directly
-              to cart.
+              Customers can add this product
+              directly to cart.
             </p>
 
           </div>
@@ -1699,7 +2233,10 @@ export default function ProductForm({
           <div className="mt-5 space-y-4">
 
             {orderSelections.map(
-              (selection, selectionIndex) => (
+              (
+                selection,
+                selectionIndex
+              ) => (
 
                 <div
                   key={selectionIndex}
@@ -1726,7 +2263,9 @@ export default function ProductForm({
 
                     <input
                       type="text"
-                      value={selection.name}
+                      value={
+                        selection.name
+                      }
                       onChange={(e) =>
                         updateOrderSelectionName(
                           selectionIndex,
@@ -1738,7 +2277,8 @@ export default function ProductForm({
                     />
 
                     <p className="mt-1 text-xs text-[#94A3B8]">
-                      Examples: Size, Capacity, Color,
+                      Examples: Size,
+                      Capacity, Color,
                       Material
                     </p>
 
@@ -1748,7 +2288,9 @@ export default function ProductForm({
 
                     <input
                       type="checkbox"
-                      checked={selection.required}
+                      checked={
+                        selection.required
+                      }
                       onChange={(e) =>
                         updateOrderSelectionRequired(
                           selectionIndex,
@@ -1759,7 +2301,8 @@ export default function ProductForm({
                     />
 
                     <span className="text-sm font-medium text-[#475569]">
-                      Customer must select an option
+                      Customer must select
+                      an option
                     </span>
 
                   </label>
@@ -1770,12 +2313,16 @@ export default function ProductForm({
                       Available Values *
                     </label>
 
-                    {selection.values.length > 0 && (
+                    {selection.values.length >
+                      0 && (
 
                       <div className="mt-3 flex flex-wrap gap-2">
 
                         {selection.values.map(
-                          (value, valueIndex) => (
+                          (
+                            value,
+                            valueIndex
+                          ) => (
 
                             <span
                               key={valueIndex}
@@ -1816,14 +2363,19 @@ export default function ProductForm({
                           ] || ""
                         }
                         onChange={(e) =>
-                          setNewOrderSelectionValue({
-                            ...newOrderSelectionValue,
-                            [selectionIndex]:
-                              e.target.value,
-                          })
+                          setNewOrderSelectionValue(
+                            {
+                              ...newOrderSelectionValue,
+                              [selectionIndex]:
+                                e.target.value,
+                            }
+                          )
                         }
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                          if (
+                            e.key ===
+                            "Enter"
+                          ) {
                             e.preventDefault();
 
                             addOrderSelectionValue(
@@ -1849,7 +2401,8 @@ export default function ProductForm({
 
                     </div>
 
-                    {selection.values.length === 0 && (
+                    {selection.values.length ===
+                      0 && (
                       <p className="mt-2 text-xs text-red-500">
                         Add at least one value.
                       </p>
@@ -1950,7 +2503,9 @@ export default function ProductForm({
         <button
           type="button"
           onClick={() =>
-            router.push("/admin/products")
+            router.push(
+              "/admin/products"
+            )
           }
           disabled={isSubmitting}
           className="rounded-[9px] px-5 py-2.5 text-sm font-semibold text-[#64748B] hover:bg-gray-100"
@@ -1960,7 +2515,9 @@ export default function ProductForm({
 
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={
+            handleSubmit
+          }
           disabled={isSubmitting}
           className="rounded-[9px] bg-[#0A1B2E] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#142C46] disabled:cursor-not-allowed disabled:opacity-60"
         >

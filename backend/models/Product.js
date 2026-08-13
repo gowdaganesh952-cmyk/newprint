@@ -2,9 +2,6 @@ import mongoose from "mongoose";
 
 // ============================================================
 // GENERAL PRODUCT OPTION
-// Example:
-// Material -> Cotton, Polyester
-// Finish -> Matte, Glossy
 // ============================================================
 
 const productOptionSchema = new mongoose.Schema(
@@ -30,10 +27,6 @@ const productOptionSchema = new mongoose.Schema(
 
 // ============================================================
 // CUSTOMER ORDER SELECTION
-//
-// Example:
-// Size -> S, M, L, XL
-// Capacity -> 250ml, 500ml
 // ============================================================
 
 const productOrderSelectionSchema = new mongoose.Schema(
@@ -65,23 +58,14 @@ const productOrderSelectionSchema = new mongoose.Schema(
 // ============================================================
 // PRODUCT VARIANT
 //
-// Only used when pricingType = "variants".
-//
 // Example:
 //
-// {
-//     selections: {
-//         Capacity: "250ml"
-//     },
-//     price: 150
-// }
-//
-// {
-//     selections: {
-//         Capacity: "500ml"
-//     },
-//     price: 200
-// }
+// Size: M
+// Color: Black
+// Price: ₹499
+// SKU: TS-BLK-M
+// Stock: 20
+// Low Stock: 5
 // ============================================================
 
 const productVariantSchema = new mongoose.Schema(
@@ -105,6 +89,36 @@ const productVariantSchema = new mongoose.Schema(
             type: String,
             trim: true,
             default: "",
+        },
+
+        // ------------------------------------------------------
+        // CURRENT AVAILABLE STOCK
+        // ------------------------------------------------------
+
+        stock: {
+            type: Number,
+            required: true,
+            min: [0, "Variant stock cannot be negative"],
+            default: 0,
+            validate: {
+                validator: Number.isInteger,
+                message: "Variant stock must be a whole number",
+            },
+        },
+
+        // ------------------------------------------------------
+        // LOW STOCK WARNING
+        // ------------------------------------------------------
+
+        lowStockThreshold: {
+            type: Number,
+            min: [0, "Low stock threshold cannot be negative"],
+            default: 5,
+            validate: {
+                validator: Number.isInteger,
+                message:
+                    "Low stock threshold must be a whole number",
+            },
         },
 
         status: {
@@ -160,12 +174,6 @@ const productSchema = new mongoose.Schema(
 
         // ------------------------------------------------------
         // FIXED PRICE
-        //
-        // Used when pricingType = "fixed".
-        //
-        // Example:
-        // Keychain -> ₹99
-        // Mug -> ₹199
         // ------------------------------------------------------
 
         price: {
@@ -176,12 +184,6 @@ const productSchema = new mongoose.Schema(
 
         // ------------------------------------------------------
         // PRICING TYPE
-        //
-        // fixed:
-        // One price regardless of selection.
-        //
-        // variants:
-        // Price depends on customer selection.
         // ------------------------------------------------------
 
         pricingType: {
@@ -191,17 +193,66 @@ const productSchema = new mongoose.Schema(
         },
 
         // ------------------------------------------------------
+        // FIXED PRODUCT STOCK
+        //
+        // Used only when pricingType = "fixed".
+        //
+        // Example:
+        //
+        // Mug
+        // Stock: 20
+        //
+        // After 19 confirmed sales:
+        // Stock: 1
+        //
+        // After final sale:
+        // Stock: 0
+        // ------------------------------------------------------
+
+        stock: {
+            type: Number,
+            min: [0, "Product stock cannot be negative"],
+            default: 0,
+            validate: {
+                validator: Number.isInteger,
+                message: "Product stock must be a whole number",
+            },
+        },
+
+        // ------------------------------------------------------
+        // FIXED PRODUCT LOW STOCK THRESHOLD
+        // ------------------------------------------------------
+
+        lowStockThreshold: {
+            type: Number,
+            min: [
+                0,
+                "Low stock threshold cannot be negative",
+            ],
+            default: 5,
+            validate: {
+                validator: Number.isInteger,
+                message:
+                    "Low stock threshold must be a whole number",
+            },
+        },
+
+        // ------------------------------------------------------
         // IMAGES
         // ------------------------------------------------------
 
         images: {
             type: [String],
+
             validate: {
                 validator: function (value) {
                     return value.length <= 10;
                 },
-                message: "Exceeds the limit of 10 images",
+
+                message:
+                    "Exceeds the limit of 10 images",
             },
+
             default: [],
         },
 
@@ -224,7 +275,7 @@ const productSchema = new mongoose.Schema(
         },
 
         // ------------------------------------------------------
-        // PRICE VARIANTS
+        // PRICE + STOCK VARIANTS
         // ------------------------------------------------------
 
         variants: {
@@ -256,4 +307,7 @@ const productSchema = new mongoose.Schema(
     }
 );
 
-export default mongoose.model("Product", productSchema);
+export default mongoose.model(
+    "Product",
+    productSchema
+);

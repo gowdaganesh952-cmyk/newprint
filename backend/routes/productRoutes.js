@@ -1,25 +1,26 @@
-import express from 'express';
+import express from "express";
 
 import {
     getProducts,
     getProduct,
     createProduct,
     updateProduct,
-    deleteProduct
-} from '../controllers/productController.js';
+    deleteProduct,
+} from "../controllers/productController.js";
 
 import {
     authenticateUser,
-    requireAdmin
-} from '../middleware/authMiddleware.js';
+    requireAdmin,
+} from "../middleware/authMiddleware.js";
 
 import {
-    upload
-} from '../middleware/uploadMiddleware.js';
+    upload,
+} from "../middleware/uploadMiddleware.js";
 
 const router = express.Router();
 
-router.route("/")
+router
+    .route("/")
     .get(getProducts)
     .post(
         authenticateUser,
@@ -28,7 +29,8 @@ router.route("/")
         createProduct
     );
 
-router.route("/:id")
+router
+    .route("/:id")
     .get(getProduct)
     .put(
         authenticateUser,
