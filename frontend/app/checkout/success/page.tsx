@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
@@ -46,10 +46,7 @@ interface OrderItem {
   price: number;
   quantity: number;
 
-  selections?: Record<
-    string,
-    string
-  >;
+  selections?: Record<string, string>;
 
   printUnits: PrintUnit[];
 }
@@ -542,10 +539,10 @@ function PaymentStatus({
 }
 
 /* ============================================================
-   PAGE
+   PAGE CONTENT
 ============================================================ */
 
-export default function CheckoutSuccessPage() {
+function CheckoutSuccessContent() {
   const searchParams =
     useSearchParams();
 
@@ -1490,5 +1487,23 @@ export default function CheckoutSuccessPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+/* ============================================================
+   PAGE WRAPPER
+   IMPORTANT: Suspense is required because the content uses
+   useSearchParams().
+============================================================ */
+
+export default function CheckoutSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <SuccessSkeleton />
+      }
+    >
+      <CheckoutSuccessContent />
+    </Suspense>
   );
 }
