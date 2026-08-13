@@ -429,33 +429,44 @@ if (
     process.env.NODE_ENV !==
     "production"
 ) {
-    const PORT =
-        process.env.PORT || 5000;
+  // ============================================================
+// START SERVER
+// ============================================================
 
-    app.listen(
-        PORT,
-        () => {
-            console.log(
-                "======================================"
-            );
+const PORT = process.env.PORT || 5000;
 
-            console.log(
-                "🚀 New Print Backend Running"
-            );
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+        console.log(
+            "======================================"
+        );
 
-            console.log(
-                `🌐 http://localhost:${PORT}`
-            );
+        console.log(
+            "🚀 New Print Backend Running"
+        );
 
-            console.log(
-                `❤️  http://localhost:${PORT}/health`
-            );
+        console.log(
+            `🌐 Port: ${PORT}`
+        );
 
-            console.log(
-                "======================================"
-            );
-        }
-    );
+        console.log(
+            `❤️ Health: /health`
+        );
+
+        console.log(
+            `🌍 Environment: ${
+                process.env.NODE_ENV ||
+                "development"
+            }`
+        );
+
+        console.log(
+            "======================================"
+        );
+    }
+);
 }
 
 // ============================================================
