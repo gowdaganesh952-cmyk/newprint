@@ -12,16 +12,37 @@ export interface ProductOrderSelection {
 /**
  * Defines how the product price works.
  */
-export type ProductPricingType = "fixed" | "variants";
+export type ProductPricingType =
+  | "fixed"
+  | "variants";
 
 /**
- * One price + inventory combination for a product.
+ * One price + inventory combination
+ * for a product.
+ *
+ * originalPrice = MRP / price before discount
+ * price         = current selling price
  */
 export interface ProductVariant {
   _id?: string;
 
-  selections: Record<string, string>;
+  selections: Record<
+    string,
+    string
+  >;
 
+  /**
+   * Original / MRP price.
+   *
+   * Example:
+   * originalPrice: 1999
+   * price: 486
+   */
+  originalPrice?: number;
+
+  /**
+   * Current selling price.
+   */
   price: number;
 
   sku?: string;
@@ -37,7 +58,9 @@ export interface ProductVariant {
    */
   lowStockThreshold?: number;
 
-  status?: "active" | "inactive";
+  status?:
+    | "active"
+    | "inactive";
 }
 
 export interface Product {
@@ -52,6 +75,22 @@ export interface Product {
   description?: string;
 
   /**
+   * Original / MRP price.
+   *
+   * Used only for fixed-price products.
+   *
+   * Example:
+   * originalPrice: 1999
+   * price: 486
+   *
+   * Website can display:
+   * ↓76% ₹1,999 ₹486
+   */
+  originalPrice?: number;
+
+  /**
+   * Current selling price.
+   *
    * Used for fixed pricing.
    */
   price?: number;
@@ -80,7 +119,9 @@ export interface Product {
 
   variants?: ProductVariant[];
 
-  status: "active" | "inactive";
+  status:
+    | "active"
+    | "inactive";
 
   featured: boolean;
 
@@ -94,5 +135,7 @@ export interface Category {
 
   name: string;
 
-  status: "active" | "inactive";
+  status:
+    | "active"
+    | "inactive";
 }

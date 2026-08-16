@@ -40,7 +40,17 @@ interface ProductOrderSelection {
 interface ProductVariant {
   _id?: string;
   selections: Record<string, string>;
+
+  /**
+   * Original / MRP price before discount.
+   */
+  originalPrice?: number;
+
+  /**
+   * Current selling price.
+   */
   price: number;
+
   sku?: string;
   stock?: number;
   lowStockThreshold?: number;
@@ -52,7 +62,17 @@ interface Product {
   name: string;
   slug?: string;
   description?: string;
+
+  /**
+   * Original / MRP price for fixed-price products.
+   */
+  originalPrice?: number | null;
+
+  /**
+   * Current selling price for fixed-price products.
+   */
   price?: number | null;
+
   pricingType?: "fixed" | "variants";
 
   stock?: number;
@@ -209,6 +229,39 @@ function formatPrice(
   return `₹${price.toLocaleString(
     "en-IN"
   )}`;
+}
+
+// ============================================================
+// DISCOUNT HELPERS
+// ============================================================
+
+function getDiscountPercentage(
+  originalPrice: number | null | undefined,
+  sellingPrice: number | null | undefined
+): number {
+  if (
+    typeof originalPrice !== "number" ||
+    !Number.isFinite(originalPrice) ||
+    originalPrice <= 0 ||
+    typeof sellingPrice !== "number" ||
+    !Number.isFinite(sellingPrice) ||
+    sellingPrice < 0 ||
+    originalPrice <= sellingPrice
+  ) {
+    return 0;
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(
+        ((originalPrice - sellingPrice) /
+          originalPrice) *
+          100
+      )
+    )
+  );
 }
 
 function normalizeSelectionValue(
@@ -788,6 +841,74 @@ export default function ProductDetailPage() {
     ]);
 
   // ==========================================================
+  // ORIGINAL / MRP PRICE
+  // ==========================================================
+
+  const displayOriginalPrice =
+    useMemo<
+      number | null
+    >(() => {
+      if (!product) {
+        return null;
+      }
+
+      if (!isVariantPricing) {
+        if (
+          typeof product.originalPrice ===
+            "number" &&
+          Number.isFinite(
+            product.originalPrice
+          )
+        ) {
+          return product.originalPrice;
+        }
+
+        // Backward compatibility for older products.
+        return displayPrice;
+      }
+
+      if (
+        selectedVariant &&
+        typeof selectedVariant.originalPrice ===
+          "number" &&
+        Number.isFinite(
+          selectedVariant.originalPrice
+        )
+      ) {
+        return selectedVariant.originalPrice;
+      }
+
+      return displayPrice;
+    }, [
+      product,
+      isVariantPricing,
+      selectedVariant,
+      displayPrice,
+    ]);
+
+  // ==========================================================
+  // DISCOUNT PERCENTAGE
+  // ==========================================================
+
+  const discountPercentage =
+    useMemo(() => {
+      return getDiscountPercentage(
+        displayOriginalPrice,
+        displayPrice
+      );
+    }, [
+      displayOriginalPrice,
+      displayPrice,
+    ]);
+
+  const hasDiscount =
+    discountPercentage > 0 &&
+    displayOriginalPrice !== null &&
+    displayPrice !== null &&
+    displayOriginalPrice >
+      displayPrice;
+
+  // ==========================================================
   // CART QUANTITY FOR CURRENT SELECTION
   // ==========================================================
 
@@ -1320,6 +1441,25 @@ export default function ProductDetailPage() {
         }
 
         if (
+          typeof selectedVariant.originalPrice ===
+            "number" &&
+          Number.isFinite(
+            selectedVariant.originalPrice
+          ) &&
+          selectedVariant.originalPrice <
+            selectedVariant.price
+        ) {
+          setValidationErrors(
+            {
+              _variant:
+                "This selected option has an invalid original price.",
+            }
+          );
+
+          return false;
+        }
+
+        if (
           selectedVariantStock <=
           0
         ) {
@@ -1351,6 +1491,30 @@ export default function ProductDetailPage() {
           {
             _variant:
               "This product does not have a valid price.",
+          }
+        );
+
+        return false;
+      }
+
+      // ------------------------------------------------------
+      // FIXED PRODUCT DISCOUNT VALIDATION
+      // ------------------------------------------------------
+
+      if (
+        !isVariantPricing &&
+        typeof product.originalPrice ===
+          "number" &&
+        Number.isFinite(
+          product.originalPrice
+        ) &&
+        product.originalPrice <
+          (product.price ?? 0)
+      ) {
+        setValidationErrors(
+          {
+            _variant:
+              "This product has an invalid original price.",
           }
         );
 
@@ -1928,12 +2092,28 @@ export default function ProductDetailPage() {
                 {product.name}
               </h1>
 
-              {/* PRICE */}
+              {/* PRICE + DISCOUNT */}
 
-              <div className="mt-4 flex min-h-9 items-end gap-2">
+              <div className="mt-4">
                 {displayPrice !==
                 null ? (
-                  <>
+                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    {hasDiscount && (
+                      <span className="inline-flex items-center rounded-[5px] bg-[#E8F5E9] px-2 py-1 text-[10px] font-extrabold text-[#15803D] sm:text-[11px]">
+                        ↓{discountPercentage}%
+                      </span>
+                    )}
+
+                    {hasDiscount &&
+                      displayOriginalPrice !==
+                        null && (
+                        <span className="text-[15px] font-semibold text-[#94A3B8] line-through decoration-[#94A3B8] sm:text-base">
+                          {formatPrice(
+                            displayOriginalPrice
+                          )}
+                        </span>
+                      )}
+
                     <span className="text-[25px] font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-3xl">
                       {formatPrice(
                         displayPrice
@@ -1941,11 +2121,11 @@ export default function ProductDetailPage() {
                     </span>
 
                     {isVariantPricing && (
-                      <span className="pb-1 text-[10px] font-medium text-[#94A3B8]">
+                      <span className="self-end pb-1 text-[10px] font-medium text-[#94A3B8]">
                         selected
                       </span>
                     )}
-                  </>
+                  </div>
                 ) : isVariantPricing ? (
                   <span className="text-sm font-bold text-[#64748B]">
                     Select options
@@ -1954,6 +2134,18 @@ export default function ProductDetailPage() {
                   <span className="text-sm font-bold uppercase tracking-wide text-[#64748B]">
                     Custom Pricing
                   </span>
+                )}
+
+                {hasDiscount && (
+                  <p className="mt-1.5 text-[10px] font-medium text-[#64748B]">
+                    You save{" "}
+                    <span className="font-extrabold text-[#15803D]">
+                      {formatPrice(
+                        (displayOriginalPrice ?? 0) -
+                          (displayPrice ?? 0)
+                      )}
+                    </span>
+                  </p>
                 )}
               </div>
 
@@ -2557,11 +2749,29 @@ export default function ProductDetailPage() {
               {displayPrice !==
               null ? (
                 <>
-                  <p className="mt-0.5 text-sm font-extrabold text-[#B9954F]">
-                    {formatPrice(
-                      displayPrice
+                  <div className="flex items-center gap-1.5">
+                    {hasDiscount && (
+                      <span className="rounded-[4px] bg-[#E8F5E9] px-1.5 py-0.5 text-[8px] font-extrabold text-[#15803D]">
+                        ↓{discountPercentage}%
+                      </span>
                     )}
-                  </p>
+
+                    {hasDiscount &&
+                      displayOriginalPrice !==
+                        null && (
+                        <span className="text-[9px] font-semibold text-[#94A3B8] line-through">
+                          {formatPrice(
+                            displayOriginalPrice
+                          )}
+                        </span>
+                      )}
+
+                    <p className="text-sm font-extrabold text-[#B9954F]">
+                      {formatPrice(
+                        displayPrice
+                      )}
+                    </p>
+                  </div>
 
                   <p className="mt-0.5 truncate text-[9px] font-medium text-[#64748B]">
                     {!hasSelectedVariant

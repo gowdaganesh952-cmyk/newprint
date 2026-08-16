@@ -16,12 +16,24 @@ interface ProductCategory {
   status?: string;
 }
 
+interface ProductVariant {
+  _id?: string;
+  selections: Record<string, string>;
+  originalPrice?: number;
+  price: number;
+  stock?: number;
+  lowStockThreshold?: number;
+  status?: "active" | "inactive";
+}
+
 interface Product {
   _id: string;
   name: string;
   slug?: string;
   description?: string;
+  originalPrice?: number;
   price?: number;
+  pricingType?: "fixed" | "variants";
   images?: string[];
   category?: ProductCategory | null;
   featured?: boolean;
@@ -30,6 +42,7 @@ interface Product {
     name: string;
     values: string[];
   }[];
+  variants?: ProductVariant[];
 }
 
 interface ProductsResponse {
@@ -173,6 +186,96 @@ const ErrorState = memo(() => {
 ErrorState.displayName = "ErrorState";
 
 // ============================================================
+// PRICE / DISCOUNT HELPERS
+// ============================================================
+
+function getDiscountPercentage(
+  originalPrice?: number | null,
+  sellingPrice?: number | null
+): number {
+  if (
+    typeof originalPrice !== "number" ||
+    typeof sellingPrice !== "number" ||
+    !Number.isFinite(originalPrice) ||
+    !Number.isFinite(sellingPrice) ||
+    originalPrice <= 0 ||
+    sellingPrice < 0 ||
+    originalPrice <= sellingPrice
+  ) {
+    return 0;
+  }
+
+  return Math.min(
+    99,
+    Math.max(
+      0,
+      Math.round(
+        ((originalPrice - sellingPrice) / originalPrice) * 100
+      )
+    )
+  );
+}
+
+function formatProductPrice(price: number): string {
+  return `₹${price.toLocaleString("en-IN")}`;
+}
+
+function getVariantDisplayPrices(product: Product) {
+  const variants = Array.isArray(product.variants)
+    ? product.variants.filter(
+        (variant) =>
+          variant &&
+          variant.status !== "inactive" &&
+          typeof variant.price === "number" &&
+          Number.isFinite(variant.price)
+      )
+    : [];
+
+  if (variants.length === 0) {
+    return null;
+  }
+
+  const sellingPrices = variants.map(
+    (variant) => variant.price
+  );
+
+  const minSellingPrice = Math.min(...sellingPrices);
+  const maxSellingPrice = Math.max(...sellingPrices);
+
+  const discountedVariants = variants.filter(
+    (variant) =>
+      typeof variant.originalPrice === "number" &&
+      variant.originalPrice > variant.price
+  );
+
+  const variantWithBestDiscount =
+    discountedVariants.length > 0
+      ? discountedVariants.reduce((best, current) => {
+          const bestDiscount = getDiscountPercentage(
+            best.originalPrice,
+            best.price
+          );
+          const currentDiscount = getDiscountPercentage(
+            current.originalPrice,
+            current.price
+          );
+
+          return currentDiscount > bestDiscount
+            ? current
+            : best;
+        })
+      : null;
+
+  return {
+    minSellingPrice,
+    maxSellingPrice,
+    hasPriceRange:
+      minSellingPrice !== maxSellingPrice,
+    discountedVariant: variantWithBestDiscount,
+  };
+}
+
+// ============================================================
 // PRODUCT CARD
 // ============================================================
 
@@ -191,11 +294,42 @@ const ProductCard = memo(
 
     const productHref = `/products/${product.slug || product._id}`;
 
-    /*
-      First two cards are prioritized because they are visible
-      immediately on a 2-column mobile layout.
-    */
     const isPriority = index < 2;
+
+    const isVariantProduct =
+      product.pricingType === "variants";
+
+    const variantPrices = isVariantProduct
+      ? getVariantDisplayPrices(product)
+      : null;
+
+    const sellingPrice =
+      !isVariantProduct &&
+      typeof product.price === "number"
+        ? product.price
+        : null;
+
+    const originalPrice =
+      !isVariantProduct &&
+      typeof product.originalPrice === "number"
+        ? product.originalPrice
+        : null;
+
+    const discountPercentage = getDiscountPercentage(
+      originalPrice,
+      sellingPrice
+    );
+
+    const hasFixedDiscount =
+      discountPercentage > 0;
+
+    const variantDiscount =
+      variantPrices?.discountedVariant
+        ? getDiscountPercentage(
+            variantPrices.discountedVariant.originalPrice,
+            variantPrices.discountedVariant.price
+          )
+        : 0;
 
     return (
       <article
@@ -216,9 +350,6 @@ const ProductCard = memo(
           md:hover:shadow-[0_14px_32px_-18px_rgba(10,27,46,0.3)]
         "
       >
-        {/* ====================================================
-            IMAGE
-        ==================================================== */}
         <Link
           href={productHref}
           className="block"
@@ -243,7 +374,6 @@ const ProductCard = memo(
 
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/[0.12] via-transparent to-transparent" />
 
-            {/* Category */}
             {product.category?.name && (
               <div className="absolute left-2.5 top-2.5 z-10 max-w-[55%] sm:left-3 sm:top-3">
                 <span className="block truncate rounded-[5px] bg-[#0A1B2E]/90 px-2 py-1 text-[8px] font-bold uppercase tracking-[0.1em] text-white sm:px-2.5 sm:text-[9px]">
@@ -252,7 +382,16 @@ const ProductCard = memo(
               </div>
             )}
 
-            {/* Featured */}
+            {(hasFixedDiscount || variantDiscount > 0) && (
+              <div className="absolute bottom-2.5 left-2.5 z-10 sm:bottom-3 sm:left-3">
+                <span className="inline-flex items-center rounded-[5px] bg-[#D92D20] px-2 py-1.5 text-[9px] font-extrabold leading-none text-white shadow-sm sm:px-2.5 sm:text-[10px]">
+                  {variantDiscount > 0 && !hasFixedDiscount
+                    ? `↓${variantDiscount}%`
+                    : `↓${discountPercentage}%`}
+                </span>
+              </div>
+            )}
+
             {product.featured && (
               <div className="absolute right-2.5 top-2.5 z-10 sm:right-3 sm:top-3">
                 <span className="rounded-[5px] bg-[#B9954F] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.1em] text-white sm:px-2.5 sm:text-[9px]">
@@ -262,9 +401,6 @@ const ProductCard = memo(
             )}
           </div>
 
-          {/* ==================================================
-              INFORMATION
-          ================================================== */}
           <div className="p-3.5 sm:p-5">
             <p className="text-[8px] font-extrabold uppercase tracking-[0.16em] text-[#B9954F] sm:text-[9px]">
               New Print
@@ -284,20 +420,68 @@ const ProductCard = memo(
               </p>
             )}
 
-            <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#E5E7EB] pt-3 sm:mt-4 sm:pt-3.5">
-              {typeof product.price === "number" ? (
-                <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
-                  ₹{product.price.toLocaleString("en-IN")}
-                </span>
+            <div className="mt-3 border-t border-[#E5E7EB] pt-3 sm:mt-4 sm:pt-3.5">
+              {!isVariantProduct && sellingPrice !== null ? (
+                <div className="min-w-0">
+                  {hasFixedDiscount ? (
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[9px] font-extrabold text-[#D92D20] sm:text-[10px]">
+                        {discountPercentage}% OFF
+                      </span>
+
+                      <span className="text-[10px] font-semibold text-[#94A3B8] line-through sm:text-xs">
+                        {formatProductPrice(originalPrice!)}
+                      </span>
+
+                      <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
+                        {formatProductPrice(sellingPrice)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
+                      {formatProductPrice(sellingPrice)}
+                    </span>
+                  )}
+                </div>
+              ) : variantPrices ? (
+                <div className="min-w-0">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {variantPrices.discountedVariant &&
+                      variantDiscount > 0 && (
+                        <span className="text-[9px] font-extrabold text-[#D92D20] sm:text-[10px]">
+                          {variantDiscount}% OFF
+                        </span>
+                      )}
+
+                    <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
+                      {variantPrices.hasPriceRange
+                        ? `From ${formatProductPrice(
+                            variantPrices.minSellingPrice
+                          )}`
+                        : formatProductPrice(
+                            variantPrices.minSellingPrice
+                          )}
+                    </span>
+                  </div>
+
+                  {variantPrices.discountedVariant &&
+                    variantDiscount > 0 && (
+                      <p className="mt-1 text-[9px] font-medium text-[#94A3B8]">
+                        Selected options may have different prices
+                      </p>
+                    )}
+                </div>
               ) : (
                 <span className="text-[10px] font-semibold text-[#64748B] sm:text-xs">
-                  Custom pricing
+                  Select options
                 </span>
               )}
 
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F7F7F5] text-[#0A1B2E] transition-colors duration-200 md:group-hover:bg-[#0A1B2E] md:group-hover:text-white sm:h-8 sm:w-8">
-                <ArrowUpRightIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </span>
+              <div className="mt-3 flex items-center justify-end">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F7F7F5] text-[#0A1B2E] transition-colors duration-200 md:group-hover:bg-[#0A1B2E] md:group-hover:text-white sm:h-8 sm:w-8">
+                  <ArrowUpRightIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </span>
+              </div>
             </div>
           </div>
         </Link>
@@ -373,6 +557,7 @@ export default function FeaturedProducts() {
 
   return (
     <section
+      style={{ scrollBehavior: "smooth" }}
       className="
         relative
         w-full

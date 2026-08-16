@@ -93,6 +93,31 @@ function formatCombination(
 }
 
 // ============================================================
+// CALCULATE DISCOUNT PERCENTAGE
+// ============================================================
+
+function calculateDiscountPercentage(
+  originalPrice: number,
+  sellingPrice: number
+): number {
+  if (
+    !Number.isFinite(originalPrice) ||
+    !Number.isFinite(sellingPrice) ||
+    originalPrice <= 0 ||
+    sellingPrice < 0 ||
+    originalPrice <= sellingPrice
+  ) {
+    return 0;
+  }
+
+  return Math.round(
+    ((originalPrice - sellingPrice) /
+      originalPrice) *
+      100
+  );
+}
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
@@ -147,6 +172,17 @@ export default function ProductForm({
       initialData?.pricingType || "fixed"
     );
 
+  const [originalPrice, setOriginalPrice] =
+    useState<string>(
+      initialData?.originalPrice !== undefined &&
+        initialData?.originalPrice !== null
+        ? String(initialData.originalPrice)
+        : initialData?.price !== undefined &&
+          initialData?.price !== null
+        ? String(initialData.price)
+        : ""
+    );
+
   const [price, setPrice] = useState<string>(
     initialData?.price !== undefined &&
       initialData?.price !== null
@@ -180,27 +216,41 @@ export default function ProductForm({
   const [variants, setVariants] = useState<
     ProductVariant[]
   >(
-    initialData?.variants?.map((variant) => ({
-      ...variant,
-      selections: { ...variant.selections },
-      price:
+    initialData?.variants?.map((variant) => {
+      const sellingPrice =
         Number.isFinite(variant.price)
           ? variant.price
-          : 0,
-      sku: variant.sku || "",
-      stock:
-        Number.isFinite(variant.stock)
-          ? variant.stock
-          : 0,
-      lowStockThreshold:
-        Number.isFinite(
-          variant.lowStockThreshold
-        )
-          ? variant.lowStockThreshold
-          : 5,
-      status:
-        variant.status || "active",
-    })) || []
+          : 0;
+
+      return {
+        ...variant,
+        selections: { ...variant.selections },
+
+        originalPrice:
+          Number.isFinite(variant.originalPrice)
+            ? variant.originalPrice
+            : sellingPrice,
+
+        price: sellingPrice,
+
+        sku: variant.sku || "",
+
+        stock:
+          Number.isFinite(variant.stock)
+            ? variant.stock
+            : 0,
+
+        lowStockThreshold:
+          Number.isFinite(
+            variant.lowStockThreshold
+          )
+            ? variant.lowStockThreshold
+            : 5,
+
+        status:
+          variant.status || "active",
+      };
+    }) || []
   );
 
   // ==========================================================
@@ -652,6 +702,11 @@ export default function ProductForm({
             _id: existing?._id,
             selections: combination,
 
+            originalPrice:
+              existing?.originalPrice ??
+              existing?.price ??
+              0,
+
             price:
               existing?.price ?? 0,
 
@@ -671,6 +726,35 @@ export default function ProductForm({
       );
     });
   }, [generatedCombinations, pricingType]);
+
+  // ==========================================================
+  // UPDATE VARIANT ORIGINAL / MRP PRICE
+  // ==========================================================
+
+  const updateVariantOriginalPrice = (
+    index: number,
+    value: string
+  ) => {
+    const numericValue =
+      value === ""
+        ? 0
+        : Number(value);
+
+    setVariants((previous) => {
+      const updated = [...previous];
+
+      updated[index] = {
+        ...updated[index],
+        originalPrice:
+          Number.isFinite(numericValue) &&
+          numericValue >= 0
+            ? numericValue
+            : 0,
+      };
+
+      return updated;
+    });
+  };
 
   // ==========================================================
   // UPDATE VARIANT PRICE
@@ -814,18 +898,39 @@ export default function ProductForm({
       return "Product name is required.";
     }
 
-    if (
-      price !== "" &&
-      Number.isNaN(Number(price))
-    ) {
-      return "Please enter a valid price.";
-    }
+    // ========================================================
+    // FIXED PRICING VALUES
+    // ========================================================
 
-    if (
-      price !== "" &&
-      Number(price) < 0
-    ) {
-      return "Price cannot be negative.";
+    if (pricingType === "fixed") {
+      if (originalPrice === "") {
+        return "Please enter an original price.";
+      }
+
+      if (
+        Number.isNaN(Number(originalPrice)) ||
+        Number(originalPrice) < 0
+      ) {
+        return "Original price cannot be negative.";
+      }
+
+      if (price === "") {
+        return "Please enter a selling price.";
+      }
+
+      if (
+        Number.isNaN(Number(price)) ||
+        Number(price) < 0
+      ) {
+        return "Selling price cannot be negative.";
+      }
+
+      if (
+        Number(originalPrice) <
+        Number(price)
+      ) {
+        return "Original price cannot be less than selling price.";
+      }
     }
 
     // ========================================================
@@ -833,19 +938,25 @@ export default function ProductForm({
     // ========================================================
 
     if (
-      stock === "" ||
-      Number.isNaN(Number(stock)) ||
-      Number(stock) < 0
+      pricingType === "fixed" &&
+      (
+        stock === "" ||
+        Number.isNaN(Number(stock)) ||
+        Number(stock) < 0
+      )
     ) {
       return "Please enter a valid stock quantity.";
     }
 
     if (
-      lowStockThreshold === "" ||
-      Number.isNaN(
-        Number(lowStockThreshold)
-      ) ||
-      Number(lowStockThreshold) < 0
+      pricingType === "fixed" &&
+      (
+        lowStockThreshold === "" ||
+        Number.isNaN(
+          Number(lowStockThreshold)
+        ) ||
+        Number(lowStockThreshold) < 0
+      )
     ) {
       return "Please enter a valid low-stock threshold.";
     }
@@ -879,20 +990,6 @@ export default function ProductForm({
     }
 
     // ========================================================
-    // FIXED PRICING
-    // ========================================================
-
-    if (pricingType === "fixed") {
-      if (price === "") {
-        return "Please enter a product price.";
-      }
-
-      if (Number(price) < 0) {
-        return "Price cannot be negative.";
-      }
-    }
-
-    // ========================================================
     // VARIANT PRICING
     // ========================================================
 
@@ -913,22 +1010,43 @@ export default function ProductForm({
       }
 
       for (const variant of variants) {
-        if (
-          !Number.isFinite(variant.price) ||
-          variant.price < 0
-        ) {
-          return `Enter a valid price for ${formatCombination(
+        const combination =
+          formatCombination(
             variant.selections
-          )}.`;
+          );
+
+        if (
+          !Number.isFinite(
+            variant.originalPrice
+          ) ||
+          (variant.originalPrice ?? 0) < 0
+        ) {
+          return `Enter a valid original price for ${combination}.`;
         }
 
         if (
-          !Number.isFinite(variant.stock) ||
+          !Number.isFinite(
+            variant.price
+          ) ||
+          variant.price < 0
+        ) {
+          return `Enter a valid selling price for ${combination}.`;
+        }
+
+        if (
+          (variant.originalPrice ?? 0) <
+          variant.price
+        ) {
+          return `Original price cannot be less than selling price for ${combination}.`;
+        }
+
+        if (
+          !Number.isFinite(
+            variant.stock
+          ) ||
           variant.stock < 0
         ) {
-          return `Enter a valid stock quantity for ${formatCombination(
-            variant.selections
-          )}.`;
+          return `Enter a valid stock quantity for ${combination}.`;
         }
 
         if (
@@ -937,9 +1055,7 @@ export default function ProductForm({
           ) ||
           (variant.lowStockThreshold ?? 0) < 0
         ) {
-          return `Enter a valid low-stock threshold for ${formatCombination(
-            variant.selections
-          )}.`;
+          return `Enter a valid low-stock threshold for ${combination}.`;
         }
       }
     }
@@ -998,13 +1114,22 @@ export default function ProductForm({
 
     if (pricingType === "fixed") {
       formData.append(
+        "originalPrice",
+        originalPrice
+      );
+
+      formData.append(
         "price",
         price
       );
 
       formData.append(
         "stock",
-        String(Math.floor(Number(stock)))
+        String(
+          Math.floor(
+            Number(stock)
+          )
+        )
       );
 
       formData.append(
@@ -1024,6 +1149,11 @@ export default function ProductForm({
 
     if (pricingType === "variants") {
       formData.append(
+        "originalPrice",
+        ""
+      );
+
+      formData.append(
         "price",
         ""
       );
@@ -1031,21 +1161,39 @@ export default function ProductForm({
       formData.append(
         "variants",
         JSON.stringify(
-          variants.map((variant) => ({
-            ...variant,
-            stock: Math.floor(
-              Number(variant.stock) || 0
-            ),
-            lowStockThreshold: Math.floor(
-              Number(
-                variant.lowStockThreshold
-              ) || 0
-            ),
-          }))
+          variants.map(
+            (variant) => ({
+              ...variant,
+
+              originalPrice:
+                Number(
+                  variant.originalPrice ?? 0
+                ),
+
+              price:
+                Number(
+                  variant.price ?? 0
+                ),
+
+              stock:
+                Math.floor(
+                  Number(
+                    variant.stock
+                  ) || 0
+                ),
+
+              lowStockThreshold:
+                Math.floor(
+                  Number(
+                    variant.lowStockThreshold
+                  ) || 0
+                ),
+            })
+          )
         )
       );
 
-      // Variant products don't use the
+      // Variant products don't use
       // product-level stock.
       formData.append(
         "stock",
@@ -1057,7 +1205,6 @@ export default function ProductForm({
         "0"
       );
     }
-
     // ========================================================
     // OTHER DATA
     // ========================================================
@@ -1440,36 +1587,108 @@ export default function ProductForm({
         ===================================================== */}
 
         {pricingType === "fixed" && (
-          <div className="mt-5 max-w-xs">
+          <div className="mt-5">
 
-            <label className="block text-sm font-semibold text-[#0A1B2E]">
-              Product Price *
-            </label>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-            <div className="relative mt-2">
+              {/* ORIGINAL PRICE */}
 
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
-                ₹
-              </span>
+              <div>
+                <label className="block text-sm font-semibold text-[#0A1B2E]">
+                  Original Price / MRP *
+                </label>
 
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={price}
-                onChange={(e) =>
-                  setPrice(
-                    e.target.value
-                  )
-                }
-                placeholder="399"
-                className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
-              />
+                <div className="relative mt-2">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
+                    ₹
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={originalPrice}
+                    onChange={(e) =>
+                      setOriginalPrice(
+                        e.target.value
+                      )
+                    }
+                    placeholder="1999"
+                    className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
+                  />
+                </div>
+
+                <p className="mt-1.5 text-xs text-[#94A3B8]">
+                  Price before discount.
+                </p>
+              </div>
+
+              {/* SELLING PRICE */}
+
+              <div>
+                <label className="block text-sm font-semibold text-[#0A1B2E]">
+                  Selling Price *
+                </label>
+
+                <div className="relative mt-2">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
+                    ₹
+                  </span>
+
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(e) =>
+                      setPrice(
+                        e.target.value
+                      )
+                    }
+                    placeholder="486"
+                    className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
+                  />
+                </div>
+
+                <p className="mt-1.5 text-xs text-[#94A3B8]">
+                  Actual price charged to the customer.
+                </p>
+              </div>
 
             </div>
 
+            {/* DISCOUNT PREVIEW */}
+
+            {Number(originalPrice) > Number(price) &&
+              Number(price) >= 0 &&
+              originalPrice !== "" &&
+              price !== "" && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF8] p-4">
+
+                  <span className="rounded-full bg-green-50 px-3 py-1.5 text-xs font-extrabold text-green-700">
+                    {calculateDiscountPercentage(
+                      Number(originalPrice),
+                      Number(price)
+                    )}% OFF
+                  </span>
+
+                  <span className="text-sm text-[#94A3B8] line-through">
+                    ₹{Number(
+                      originalPrice
+                    ).toLocaleString("en-IN")}
+                  </span>
+
+                  <span className="text-lg font-extrabold text-[#0A1B2E]">
+                    ₹{Number(
+                      price
+                    ).toLocaleString("en-IN")}
+                  </span>
+
+                </div>
+              )}
+
             {orderSelections.length > 0 && (
-              <p className="mt-2 text-xs leading-5 text-[#64748B]">
+              <p className="mt-3 text-xs leading-5 text-[#64748B]">
                 All customer selections will use
                 this same price.
               </p>
@@ -1552,14 +1771,18 @@ export default function ProductForm({
 
                   {/* DESKTOP HEADER */}
 
-                  <div className="hidden grid-cols-[1fr_120px_120px_100px] gap-3 bg-[#F7F7F5] px-4 py-3 lg:grid">
+                  <div className="hidden grid-cols-[1fr_120px_120px_120px_100px] gap-3 bg-[#F7F7F5] px-4 py-3 lg:grid">
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
                       Selection
                     </div>
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
-                      Price
+                      Original
+                    </div>
+
+                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
+                      Selling
                     </div>
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
@@ -1581,7 +1804,7 @@ export default function ProductForm({
                           key={`${formatCombination(
                             variant.selections
                           )}-${index}`}
-                          className="grid grid-cols-1 gap-4 px-4 py-5 lg:grid-cols-[1fr_120px_120px_100px] lg:items-start lg:gap-3"
+                          className="grid grid-cols-1 gap-4 px-4 py-5 lg:grid-cols-[1fr_120px_120px_120px_100px] lg:items-start lg:gap-3"
                         >
 
                           {/* SELECTION */}
@@ -1624,12 +1847,69 @@ export default function ProductForm({
 
                           </div>
 
-                          {/* PRICE */}
+                          {/* ORIGINAL PRICE */}
 
                           <div>
 
                             <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                              Price
+                              Original
+                            </label>
+
+                            <div className="relative">
+
+                              <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
+                                ₹
+                              </span>
+
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={
+                                  variant.originalPrice === 0
+                                    ? ""
+                                    : variant.originalPrice ?? ""
+                                }
+                                onChange={(e) =>
+                                  updateVariantOriginalPrice(
+                                    index,
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="1999"
+                                className="w-full rounded-[8px] border border-[#E5E7EB] py-2 pl-8 pr-3 text-sm font-semibold outline-none focus:border-[#B9954F]"
+                              />
+
+                            </div>
+
+                            {calculateDiscountPercentage(
+                              Number(
+                                variant.originalPrice ?? 0
+                              ),
+                              Number(
+                                variant.price ?? 0
+                              )
+                            ) > 0 && (
+                              <span className="mt-1.5 inline-flex rounded-full bg-green-50 px-2 py-0.5 text-[9px] font-extrabold text-green-700">
+                                {calculateDiscountPercentage(
+                                  Number(
+                                    variant.originalPrice ?? 0
+                                  ),
+                                  Number(
+                                    variant.price ?? 0
+                                  )
+                                )}% OFF
+                              </span>
+                            )}
+
+                          </div>
+
+                          {/* SELLING PRICE */}
+
+                          <div>
+
+                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
+                              Selling
                             </label>
 
                             <div className="relative">
@@ -1653,7 +1933,7 @@ export default function ProductForm({
                                     e.target.value
                                   )
                                 }
-                                placeholder="0"
+                                placeholder="486"
                                 className="w-full rounded-[8px] border border-[#E5E7EB] py-2 pl-8 pr-3 text-sm font-semibold outline-none focus:border-[#B9954F]"
                               />
 

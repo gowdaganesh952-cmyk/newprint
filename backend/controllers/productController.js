@@ -304,6 +304,10 @@ const validateOrderSelections = (
 // VALIDATE VARIANTS
 // ============================================================
 
+// ============================================================
+// VALIDATE VARIANTS
+// ============================================================
+
 const validateVariants = (
     variants,
     orderSelections
@@ -336,7 +340,8 @@ const validateVariants = (
     const combinationKeys =
         new Set();
 
-    const skuSet = new Set();
+    const skuSet =
+        new Set();
 
     for (
         const variant of variants
@@ -351,11 +356,13 @@ const validateVariants = (
         }
 
         // ------------------------------------------------------
-        // PRICE
+        // SELLING PRICE
         // ------------------------------------------------------
 
         const variantPrice =
-            Number(variant.price);
+            Number(
+                variant.price
+            );
 
         if (
             !Number.isFinite(
@@ -363,7 +370,48 @@ const validateVariants = (
             ) ||
             variantPrice < 0
         ) {
-            return "Every variant must have a valid non-negative price";
+            return "Every variant must have a valid non-negative selling price";
+        }
+
+        // ------------------------------------------------------
+        // ORIGINAL / MRP PRICE
+        //
+        // If not provided, use selling price.
+        //
+        // This keeps older variants working.
+        // ------------------------------------------------------
+
+        const variantOriginalPrice =
+            variant.originalPrice ===
+                undefined ||
+            variant.originalPrice ===
+                null ||
+            variant.originalPrice ===
+                ""
+                ? variantPrice
+                : Number(
+                      variant.originalPrice
+                  );
+
+        if (
+            !Number.isFinite(
+                variantOriginalPrice
+            ) ||
+            variantOriginalPrice < 0
+        ) {
+            return "Every variant must have a valid non-negative original price";
+        }
+
+        // ------------------------------------------------------
+        // ORIGINAL PRICE CANNOT BE LESS THAN
+        // SELLING PRICE
+        // ------------------------------------------------------
+
+        if (
+            variantOriginalPrice <
+            variantPrice
+        ) {
+            return "Variant original price cannot be less than selling price";
         }
 
         // ------------------------------------------------------
@@ -371,7 +419,9 @@ const validateVariants = (
         // ------------------------------------------------------
 
         const variantStock =
-            Number(variant.stock);
+            Number(
+                variant.stock
+            );
 
         if (
             !Number.isFinite(
@@ -699,6 +749,12 @@ export const getProduct = async (
 // @access Admin
 // ============================================================
 
+// ============================================================
+// CREATE PRODUCT
+// @route POST /api/products
+// @access Admin
+// ============================================================
+
 export const createProduct = async (
     req,
     res
@@ -714,6 +770,7 @@ export const createProduct = async (
         let {
             slug,
             price,
+            originalPrice,
             pricingType = "fixed",
             featured,
             options,
@@ -887,18 +944,28 @@ export const createProduct = async (
         // ====================================================
 
         let parsedPrice = null;
+
+        let parsedOriginalPrice =
+            null;
+
         let parsedStock = 0;
+
         let parsedLowStockThreshold = 5;
+
         let parsedVariants = [];
 
         // ====================================================
-        // FIXED
+        // FIXED PRICING
         // ====================================================
 
         if (
             pricingType ===
             "fixed"
         ) {
+            // ------------------------------------------------
+            // SELLING PRICE
+            // ------------------------------------------------
+
             if (
                 price ===
                     undefined ||
@@ -928,6 +995,62 @@ export const createProduct = async (
                         success: false,
                         message:
                             "Price must be a valid non-negative number",
+                    });
+            }
+
+            // ------------------------------------------------
+            // ORIGINAL / MRP PRICE
+            //
+            // If originalPrice is not supplied,
+            // use selling price.
+            //
+            // This keeps old products working.
+            // ------------------------------------------------
+
+            if (
+                originalPrice ===
+                    undefined ||
+                originalPrice === ""
+            ) {
+                parsedOriginalPrice =
+                    parsedPrice;
+            } else {
+                parsedOriginalPrice =
+                    Number(
+                        originalPrice
+                    );
+
+                if (
+                    !Number.isFinite(
+                        parsedOriginalPrice
+                    ) ||
+                    parsedOriginalPrice < 0
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Original price must be a valid non-negative number",
+                        });
+                }
+            }
+
+            // ------------------------------------------------
+            // ORIGINAL PRICE MUST NOT BE LESS THAN
+            // SELLING PRICE
+            // ------------------------------------------------
+
+            if (
+                parsedOriginalPrice <
+                parsedPrice
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Original price cannot be less than selling price",
                     });
             }
 
@@ -996,8 +1119,12 @@ export const createProduct = async (
         ) {
             parsedPrice = null;
 
+            parsedOriginalPrice =
+                null;
+
             // Product-level stock is not used.
             parsedStock = 0;
+
             parsedLowStockThreshold = 0;
 
             parsedVariants =
@@ -1036,39 +1163,107 @@ export const createProduct = async (
                     });
             }
 
-            // Normalize variant inventory
+            // ------------------------------------------------
+            // NORMALIZE VARIANTS
+            // ------------------------------------------------
+
             parsedVariants =
                 parsedVariants.map(
-                    (variant) => ({
-                        ...variant,
+                    (variant) => {
+                        const sellingPrice =
+                            Number(
+                                variant.price
+                            );
 
-                        price: Number(
-                            variant.price
-                        ),
+                        let variantOriginalPrice;
 
-                        sku:
-                            typeof variant.sku ===
-                            "string"
-                                ? variant.sku.trim()
-                                : "",
-
-                        stock: Number(
-                            variant.stock
-                        ),
-
-                        lowStockThreshold:
-                            variant.lowStockThreshold ===
+                        if (
+                            variant.originalPrice ===
                                 undefined ||
-                            variant.lowStockThreshold ===
+                            variant.originalPrice ===
                                 null ||
-                            variant.lowStockThreshold ===
+                            variant.originalPrice ===
                                 ""
-                                ? 5
-                                : Number(
-                                      variant.lowStockThreshold
-                                  ),
-                    })
+                        ) {
+                            variantOriginalPrice =
+                                sellingPrice;
+                        } else {
+                            variantOriginalPrice =
+                                Number(
+                                    variant.originalPrice
+                                );
+                        }
+
+                        return {
+                            ...variant,
+
+                            originalPrice:
+                                variantOriginalPrice,
+
+                            price:
+                                sellingPrice,
+
+                            sku:
+                                typeof variant.sku ===
+                                "string"
+                                    ? variant.sku.trim()
+                                    : "",
+
+                            stock:
+                                Number(
+                                    variant.stock
+                                ),
+
+                            lowStockThreshold:
+                                variant.lowStockThreshold ===
+                                    undefined ||
+                                variant.lowStockThreshold ===
+                                    null ||
+                                variant.lowStockThreshold ===
+                                    ""
+                                    ? 5
+                                    : Number(
+                                          variant.lowStockThreshold
+                                      ),
+                        };
+                    }
                 );
+
+            // ------------------------------------------------
+            // VALIDATE VARIANT ORIGINAL PRICES
+            // ------------------------------------------------
+
+            for (
+                const variant of parsedVariants
+            ) {
+                if (
+                    !Number.isFinite(
+                        variant.originalPrice
+                    ) ||
+                    variant.originalPrice < 0
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Every variant must have a valid original price",
+                        });
+                }
+
+                if (
+                    variant.originalPrice <
+                    variant.price
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Variant original price cannot be less than selling price",
+                        });
+                }
+            }
         }
 
         // ====================================================
@@ -1146,18 +1341,36 @@ export const createProduct = async (
 
                 pricingType,
 
+                // ------------------------------------------------
+                // FIXED PRODUCT PRICING
+                // ------------------------------------------------
+
+                originalPrice:
+                    parsedOriginalPrice,
+
                 price:
                     parsedPrice,
 
+                // ------------------------------------------------
                 // FIXED PRODUCT INVENTORY
+                // ------------------------------------------------
+
                 stock:
                     parsedStock,
 
                 lowStockThreshold:
                     parsedLowStockThreshold,
 
+                // ------------------------------------------------
+                // IMAGES
+                // ------------------------------------------------
+
                 images:
                     imageUrls,
+
+                // ------------------------------------------------
+                // OPTIONS
+                // ------------------------------------------------
 
                 options:
                     parsedOptions,
@@ -1165,8 +1378,16 @@ export const createProduct = async (
                 orderSelections:
                     parsedOrderSelections,
 
+                // ------------------------------------------------
+                // VARIANTS
+                // ------------------------------------------------
+
                 variants:
                     parsedVariants,
+
+                // ------------------------------------------------
+                // STATUS
+                // ------------------------------------------------
 
                 status,
 
@@ -1249,6 +1470,12 @@ export const createProduct = async (
 // @access Admin
 // ============================================================
 
+// ============================================================
+// UPDATE PRODUCT
+// @route PUT /api/products/:id
+// @access Admin
+// ============================================================
+
 export const updateProduct = async (
     req,
     res
@@ -1279,6 +1506,7 @@ export const updateProduct = async (
         let {
             slug,
             price,
+            originalPrice,
             pricingType,
             featured,
             options,
@@ -1489,6 +1717,10 @@ export const updateProduct = async (
             product.price ??
             null;
 
+        let finalOriginalPrice =
+            product.originalPrice ??
+            null;
+
         let finalStock =
             product.stock ??
             0;
@@ -1510,7 +1742,7 @@ export const updateProduct = async (
             "fixed"
         ) {
             // ------------------------------------------------
-            // PRICE
+            // SELLING PRICE
             // ------------------------------------------------
 
             if (
@@ -1540,10 +1772,68 @@ export const updateProduct = async (
             }
 
             // ------------------------------------------------
+            // ORIGINAL / MRP PRICE
+            // ------------------------------------------------
+
+            if (
+                originalPrice !==
+                    undefined &&
+                originalPrice !== ""
+            ) {
+                finalOriginalPrice =
+                    Number(
+                        originalPrice
+                    );
+            } else if (
+                finalOriginalPrice ===
+                    null ||
+                finalOriginalPrice ===
+                    undefined
+            ) {
+                /*
+                 * For older products that do not
+                 * have originalPrice, use selling
+                 * price so the product remains valid.
+                 */
+                finalOriginalPrice =
+                    finalPrice;
+            }
+
+            if (
+                !Number.isFinite(
+                    finalOriginalPrice
+                ) ||
+                finalOriginalPrice < 0
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Original price must be a valid non-negative number",
+                    });
+            }
+
+            // ------------------------------------------------
+            // ORIGINAL PRICE MUST NOT BE LESS THAN
+            // SELLING PRICE
+            // ------------------------------------------------
+
+            if (
+                finalOriginalPrice <
+                finalPrice
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Original price cannot be less than selling price",
+                    });
+            }
+
+            // ------------------------------------------------
             // STOCK
-            //
-            // If frontend sends stock, update it.
-            // Otherwise preserve current stock.
             // ------------------------------------------------
 
             if (
@@ -1617,8 +1907,12 @@ export const updateProduct = async (
         ) {
             finalPrice = null;
 
+            finalOriginalPrice =
+                null;
+
             // Product-level stock is unused.
             finalStock = 0;
+
             finalLowStockThreshold = 0;
 
             if (
@@ -1662,41 +1956,107 @@ export const updateProduct = async (
                     });
             }
 
-            // Normalize variants.
+            // ------------------------------------------------
+            // NORMALIZE VARIANTS
+            // ------------------------------------------------
+
             finalVariants =
                 finalVariants.map(
-                    (variant) => ({
-                        ...variant,
-
-                        price:
+                    (variant) => {
+                        const sellingPrice =
                             Number(
                                 variant.price
-                            ),
+                            );
 
-                        sku:
-                            typeof variant.sku ===
-                            "string"
-                                ? variant.sku.trim()
-                                : "",
+                        let variantOriginalPrice;
 
-                        stock:
-                            Number(
-                                variant.stock
-                            ),
-
-                        lowStockThreshold:
-                            variant.lowStockThreshold ===
+                        if (
+                            variant.originalPrice ===
                                 undefined ||
-                            variant.lowStockThreshold ===
+                            variant.originalPrice ===
                                 null ||
-                            variant.lowStockThreshold ===
+                            variant.originalPrice ===
                                 ""
-                                ? 5
-                                : Number(
-                                      variant.lowStockThreshold
-                                  ),
-                    })
+                        ) {
+                            variantOriginalPrice =
+                                sellingPrice;
+                        } else {
+                            variantOriginalPrice =
+                                Number(
+                                    variant.originalPrice
+                                );
+                        }
+
+                        return {
+                            ...variant,
+
+                            originalPrice:
+                                variantOriginalPrice,
+
+                            price:
+                                sellingPrice,
+
+                            sku:
+                                typeof variant.sku ===
+                                "string"
+                                    ? variant.sku.trim()
+                                    : "",
+
+                            stock:
+                                Number(
+                                    variant.stock
+                                ),
+
+                            lowStockThreshold:
+                                variant.lowStockThreshold ===
+                                    undefined ||
+                                variant.lowStockThreshold ===
+                                    null ||
+                                variant.lowStockThreshold ===
+                                    ""
+                                    ? 5
+                                    : Number(
+                                          variant.lowStockThreshold
+                                      ),
+                        };
+                    }
                 );
+
+            // ------------------------------------------------
+            // VALIDATE VARIANT ORIGINAL PRICES
+            // ------------------------------------------------
+
+            for (
+                const variant of finalVariants
+            ) {
+                if (
+                    !Number.isFinite(
+                        variant.originalPrice
+                    ) ||
+                    variant.originalPrice < 0
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Every variant must have a valid original price",
+                        });
+                }
+
+                if (
+                    variant.originalPrice <
+                    variant.price
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Variant original price cannot be less than selling price",
+                        });
+                }
+            }
         }
 
         // ====================================================
@@ -1823,19 +2183,40 @@ export const updateProduct = async (
                     pricingType:
                         finalPricingType,
 
+                    // ------------------------------------------------
+                    // ORIGINAL / MRP PRICE
+                    // ------------------------------------------------
+
+                    originalPrice:
+                        finalOriginalPrice,
+
+                    // ------------------------------------------------
+                    // CURRENT SELLING PRICE
+                    // ------------------------------------------------
+
                     price:
                         finalPrice,
 
+                    // ------------------------------------------------
                     // FIXED PRODUCT INVENTORY
+                    // ------------------------------------------------
+
                     stock:
                         finalStock,
 
                     lowStockThreshold:
                         finalLowStockThreshold,
 
-                    // VARIANT INVENTORY
+                    // ------------------------------------------------
+                    // VARIANT INVENTORY + PRICING
+                    // ------------------------------------------------
+
                     variants:
                         finalVariants,
+
+                    // ------------------------------------------------
+                    // STATUS
+                    // ------------------------------------------------
 
                     status:
                         status ||
@@ -1844,11 +2225,19 @@ export const updateProduct = async (
                     featured:
                         finalFeatured,
 
+                    // ------------------------------------------------
+                    // OPTIONS
+                    // ------------------------------------------------
+
                     options:
                         parsedOptions,
 
                     orderSelections:
                         parsedOrderSelections,
+
+                    // ------------------------------------------------
+                    // IMAGES
+                    // ------------------------------------------------
 
                     images:
                         finalImages,
@@ -1861,6 +2250,16 @@ export const updateProduct = async (
                 "category",
                 "name slug status"
             );
+
+        if (!updatedProduct) {
+            return res
+                .status(404)
+                .json({
+                    success: false,
+                    message:
+                        "Product not found",
+                });
+        }
 
         return res
             .status(200)

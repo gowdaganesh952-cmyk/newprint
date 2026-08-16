@@ -62,7 +62,8 @@ const productOrderSelectionSchema = new mongoose.Schema(
 //
 // Size: M
 // Color: Black
-// Price: ₹499
+// Original Price: ₹1,999
+// Selling Price: ₹486
 // SKU: TS-BLK-M
 // Stock: 20
 // Low Stock: 5
@@ -79,11 +80,42 @@ const productVariantSchema = new mongoose.Schema(
             required: true,
         },
 
+        // ------------------------------------------------------
+        // ORIGINAL / MRP PRICE
+        //
+        // Example:
+        // originalPrice = 1999
+        // price         = 486
+        //
+        // Discount percentage will be calculated on frontend
+        // and backend from these two values.
+        // ------------------------------------------------------
+
+        originalPrice: {
+            type: Number,
+            min: [
+                0,
+                "Original price cannot be negative",
+            ],
+            default: null,
+        },
+
+        // ------------------------------------------------------
+        // CURRENT SELLING PRICE
+        // ------------------------------------------------------
+
         price: {
             type: Number,
             required: true,
-            min: [0, "Variant price cannot be negative"],
+            min: [
+                0,
+                "Variant price cannot be negative",
+            ],
         },
+
+        // ------------------------------------------------------
+        // SKU
+        // ------------------------------------------------------
 
         sku: {
             type: String,
@@ -98,11 +130,15 @@ const productVariantSchema = new mongoose.Schema(
         stock: {
             type: Number,
             required: true,
-            min: [0, "Variant stock cannot be negative"],
+            min: [
+                0,
+                "Variant stock cannot be negative",
+            ],
             default: 0,
             validate: {
                 validator: Number.isInteger,
-                message: "Variant stock must be a whole number",
+                message:
+                    "Variant stock must be a whole number",
             },
         },
 
@@ -112,7 +148,10 @@ const productVariantSchema = new mongoose.Schema(
 
         lowStockThreshold: {
             type: Number,
-            min: [0, "Low stock threshold cannot be negative"],
+            min: [
+                0,
+                "Low stock threshold cannot be negative",
+            ],
             default: 5,
             validate: {
                 validator: Number.isInteger,
@@ -121,9 +160,16 @@ const productVariantSchema = new mongoose.Schema(
             },
         },
 
+        // ------------------------------------------------------
+        // STATUS
+        // ------------------------------------------------------
+
         status: {
             type: String,
-            enum: ["active", "inactive"],
+            enum: [
+                "active",
+                "inactive",
+            ],
             default: "active",
         },
     },
@@ -145,7 +191,10 @@ const productSchema = new mongoose.Schema(
         category: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Category",
-            required: [true, "Product category is required"],
+            required: [
+                true,
+                "Product category is required",
+            ],
         },
 
         // ------------------------------------------------------
@@ -154,13 +203,19 @@ const productSchema = new mongoose.Schema(
 
         name: {
             type: String,
-            required: [true, "Product name is required"],
+            required: [
+                true,
+                "Product name is required",
+            ],
             trim: true,
         },
 
         slug: {
             type: String,
-            required: [true, "Product slug is required"],
+            required: [
+                true,
+                "Product slug is required",
+            ],
             unique: true,
             lowercase: true,
             trim: true,
@@ -173,12 +228,44 @@ const productSchema = new mongoose.Schema(
         },
 
         // ------------------------------------------------------
-        // FIXED PRICE
+        // ORIGINAL / MRP PRICE
+        //
+        // Used for displaying discounts.
+        //
+        // Example:
+        //
+        // originalPrice: 1999
+        // price: 486
+        //
+        // Website:
+        //
+        // ↓76%  ₹1,999  ₹486
+        //
+        // If originalPrice is null or equal to price,
+        // no discount will be displayed.
+        // ------------------------------------------------------
+
+        originalPrice: {
+            type: Number,
+            min: [
+                0,
+                "Original price cannot be negative",
+            ],
+            default: null,
+        },
+
+        // ------------------------------------------------------
+        // CURRENT SELLING PRICE
+        //
+        // Used for actual cart/order calculations.
         // ------------------------------------------------------
 
         price: {
             type: Number,
-            min: [0, "Price cannot be negative"],
+            min: [
+                0,
+                "Price cannot be negative",
+            ],
             default: null,
         },
 
@@ -188,7 +275,10 @@ const productSchema = new mongoose.Schema(
 
         pricingType: {
             type: String,
-            enum: ["fixed", "variants"],
+            enum: [
+                "fixed",
+                "variants",
+            ],
             default: "fixed",
         },
 
@@ -196,26 +286,19 @@ const productSchema = new mongoose.Schema(
         // FIXED PRODUCT STOCK
         //
         // Used only when pricingType = "fixed".
-        //
-        // Example:
-        //
-        // Mug
-        // Stock: 20
-        //
-        // After 19 confirmed sales:
-        // Stock: 1
-        //
-        // After final sale:
-        // Stock: 0
         // ------------------------------------------------------
 
         stock: {
             type: Number,
-            min: [0, "Product stock cannot be negative"],
+            min: [
+                0,
+                "Product stock cannot be negative",
+            ],
             default: 0,
             validate: {
                 validator: Number.isInteger,
-                message: "Product stock must be a whole number",
+                message:
+                    "Product stock must be a whole number",
             },
         },
 
@@ -261,7 +344,9 @@ const productSchema = new mongoose.Schema(
         // ------------------------------------------------------
 
         options: {
-            type: [productOptionSchema],
+            type: [
+                productOptionSchema,
+            ],
             default: [],
         },
 
@@ -270,7 +355,9 @@ const productSchema = new mongoose.Schema(
         // ------------------------------------------------------
 
         orderSelections: {
-            type: [productOrderSelectionSchema],
+            type: [
+                productOrderSelectionSchema,
+            ],
             default: [],
         },
 
@@ -279,7 +366,9 @@ const productSchema = new mongoose.Schema(
         // ------------------------------------------------------
 
         variants: {
-            type: [productVariantSchema],
+            type: [
+                productVariantSchema,
+            ],
             default: [],
         },
 
@@ -289,7 +378,10 @@ const productSchema = new mongoose.Schema(
 
         status: {
             type: String,
-            enum: ["active", "inactive"],
+            enum: [
+                "active",
+                "inactive",
+            ],
             default: "active",
         },
 
@@ -306,6 +398,10 @@ const productSchema = new mongoose.Schema(
         timestamps: true,
     }
 );
+
+// ============================================================
+// EXPORT MODEL
+// ============================================================
 
 export default mongoose.model(
     "Product",
