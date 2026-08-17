@@ -65,10 +65,7 @@ body {
   background: #ffffff;
   color: #0a1b2e;
 
-  font-family:
-    Arial,
-    Helvetica,
-    sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
 
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -201,73 +198,32 @@ article {
    NEW PRINT LOADER ANIMATIONS
 ============================================================ */
 
-/* Slow outer dashed ring */
-
 .animate-newprint-loader-slow {
-  animation:
-    newprintLoaderSpin
-    12s
-    linear
-    infinite;
+  animation: newprintLoaderSpin 12s linear infinite;
 }
-
-/* Main rotating ring */
 
 .animate-newprint-loader-main {
-  animation:
-    newprintLoaderSpin
-    1.8s
-    cubic-bezier(0.4, 0, 0.2, 1)
-    infinite;
+  animation: newprintLoaderSpin 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
-
-/* Reverse inner ring */
 
 .animate-newprint-loader-reverse {
-  animation:
-    newprintLoaderSpinReverse
-    1.25s
-    linear
-    infinite;
+  animation: newprintLoaderSpinReverse 1.25s linear infinite;
 }
-
-/* Center print disc */
 
 .animate-newprint-loader-disc {
-  animation:
-    newprintLoaderSpin
-    3.5s
-    linear
-    infinite;
+  animation: newprintLoaderSpin 3.5s linear infinite;
 }
-
-/* Orbiting dot */
 
 .animate-newprint-loader-orbit {
-  animation:
-    newprintLoaderSpin
-    2.7s
-    linear
-    infinite;
+  animation: newprintLoaderSpin 2.7s linear infinite;
 }
-
-/* Loading text */
 
 .animate-newprint-loader-text {
-  animation:
-    newprintLoaderText
-    0.45s
-    ease-out;
+  animation: newprintLoaderText 0.45s ease-out;
 }
 
-/* Progress bar */
-
 .animate-newprint-loader-progress {
-  animation:
-    newprintLoaderProgress
-    1.6s
-    ease-in-out
-    infinite;
+  animation: newprintLoaderProgress 1.6s ease-in-out infinite;
 }
 
 /* ============================================================
