@@ -46,23 +46,11 @@ html {
   min-height: 100%;
   background: #ffffff;
 
-  /*
-   * Smooth native scrolling.
-   *
-   * We intentionally do NOT use JavaScript scroll animation.
-   * Native scrolling is smoother and more reliable on mobile.
-   */
   scroll-behavior: smooth;
 
-  /*
-   * Prevent mobile browsers from automatically enlarging text.
-   */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 
-  /*
-   * Prevent horizontal overscroll.
-   */
   overscroll-behavior-x: none;
 }
 
@@ -82,17 +70,11 @@ body {
     Helvetica,
     sans-serif;
 
-  /*
-   * Better text rendering.
-   */
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
   text-rendering: optimizeLegibility;
 
-  /*
-   * Prevent horizontal rubber-band movement.
-   */
   overscroll-behavior-x: none;
 }
 
@@ -112,9 +94,6 @@ img {
   height: auto;
 }
 
-/*
- * Prevent media from accidentally creating horizontal overflow.
- */
 video {
   width: 100%;
 }
@@ -129,7 +108,7 @@ a {
 }
 
 /* ============================================================
-   BUTTONS / FORM ELEMENTS
+   BUTTONS / FORMS
 ============================================================ */
 
 button,
@@ -141,14 +120,7 @@ select {
 
 button,
 a {
-  /*
-   * Better touch behavior on phones.
-   */
   touch-action: manipulation;
-
-  /*
-   * Remove the default mobile tap highlight.
-   */
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -169,14 +141,6 @@ button {
    PAGE LOADING LOCK
 ============================================================ */
 
-/*
- * HomePageReady adds this class while the initial homepage
- * loader is active.
- *
- * This guarantees that the user cannot scroll the page behind
- * the loader.
- */
-
 html.newprint-page-loading,
 body.newprint-page-loading {
   overflow: hidden !important;
@@ -184,6 +148,20 @@ body.newprint-page-loading {
 }
 
 body.newprint-page-loading {
+  touch-action: none !important;
+}
+
+/* ============================================================
+   MOBILE MENU LOCK
+============================================================ */
+
+html.newprint-menu-open,
+body.newprint-menu-open {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.newprint-menu-open {
   touch-action: none !important;
 }
 
@@ -200,11 +178,6 @@ body.newprint-page-loading {
 /* ============================================================
    PAGE WIDTH PROTECTION
 ============================================================ */
-
-/*
- * Prevent common mobile components from creating horizontal
- * overflow.
- */
 
 main,
 section,
@@ -225,23 +198,167 @@ article {
 }
 
 /* ============================================================
+   NEW PRINT LOADER ANIMATIONS
+============================================================ */
+
+/* Slow outer dashed ring */
+
+.animate-newprint-loader-slow {
+  animation:
+    newprintLoaderSpin
+    12s
+    linear
+    infinite;
+}
+
+/* Main rotating ring */
+
+.animate-newprint-loader-main {
+  animation:
+    newprintLoaderSpin
+    1.8s
+    cubic-bezier(0.4, 0, 0.2, 1)
+    infinite;
+}
+
+/* Reverse inner ring */
+
+.animate-newprint-loader-reverse {
+  animation:
+    newprintLoaderSpinReverse
+    1.25s
+    linear
+    infinite;
+}
+
+/* Center print disc */
+
+.animate-newprint-loader-disc {
+  animation:
+    newprintLoaderSpin
+    3.5s
+    linear
+    infinite;
+}
+
+/* Orbiting dot */
+
+.animate-newprint-loader-orbit {
+  animation:
+    newprintLoaderSpin
+    2.7s
+    linear
+    infinite;
+}
+
+/* Loading text */
+
+.animate-newprint-loader-text {
+  animation:
+    newprintLoaderText
+    0.45s
+    ease-out;
+}
+
+/* Progress bar */
+
+.animate-newprint-loader-progress {
+  animation:
+    newprintLoaderProgress
+    1.6s
+    ease-in-out
+    infinite;
+}
+
+/* ============================================================
+   LOADER KEYFRAMES
+============================================================ */
+
+@keyframes newprintLoaderSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes newprintLoaderSpinReverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes newprintLoaderText {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes newprintLoaderProgress {
+  0% {
+    transform: translateX(-160%);
+  }
+
+  50% {
+    transform: translateX(190%);
+  }
+
+  100% {
+    transform: translateX(370%);
+  }
+}
+
+/* ============================================================
+   REDUCED MOTION
+============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-newprint-loader-slow,
+  .animate-newprint-loader-main,
+  .animate-newprint-loader-reverse,
+  .animate-newprint-loader-disc,
+  .animate-newprint-loader-orbit,
+  .animate-newprint-loader-text,
+  .animate-newprint-loader-progress {
+    animation: none !important;
+  }
+}
+
+/* ============================================================
    MOBILE
 ============================================================ */
 
 @media (max-width: 640px) {
   html {
-    /*
-     * Keeps anchored sections from hiding behind the mobile
-     * navbar.
-     */
     scroll-padding-top: 68px;
   }
 
   body {
-    /*
-     * Prevent vertical overscroll bounce from creating a
-     * strange feeling around the edges of the page.
-     */
     overscroll-behavior-y: none;
   }
 }
@@ -267,33 +384,8 @@ article {
 }
 
 /* ============================================================
-   REDUCED MOTION
-============================================================ */
-
-@media (prefers-reduced-motion: reduce) {
-  html {
-    scroll-behavior: auto;
-  }
-
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ============================================================
    MOBILE PERFORMANCE
 ============================================================ */
-
-/*
- * Avoid expensive hover-style behavior on touch devices.
- * Your product cards already use md:hover, so these rules
- * naturally keep the mobile experience simpler.
- */
 
 @media (hover: none) and (pointer: coarse) {
   button,

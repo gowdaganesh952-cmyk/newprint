@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -19,7 +20,6 @@ export default function CoreSpinLoader() {
 
     const timer = window.setInterval(() => {
       index = (index + 1) % loadingStates.length;
-
       setLoadingText(loadingStates[index]);
     }, 1400);
 
@@ -45,10 +45,7 @@ export default function CoreSpinLoader() {
       aria-live="polite"
       aria-busy="true"
     >
-      {/* =====================================================
-          SUBTLE BACKGROUND DETAIL
-      ====================================================== */}
-
+      {/* Background glow */}
       <div
         aria-hidden="true"
         className="
@@ -68,6 +65,7 @@ export default function CoreSpinLoader() {
         "
       />
 
+      {/* Background ring */}
       <div
         aria-hidden="true"
         className="
@@ -87,10 +85,7 @@ export default function CoreSpinLoader() {
         "
       />
 
-      {/* =====================================================
-          MAIN LOADER
-      ====================================================== */}
-
+      {/* Main loader */}
       <div
         className="
           relative
@@ -103,8 +98,7 @@ export default function CoreSpinLoader() {
           sm:w-[108px]
         "
       >
-        {/* Outer navy ring */}
-
+        {/* Outer ring */}
         <div
           className="
             absolute
@@ -115,8 +109,7 @@ export default function CoreSpinLoader() {
           "
         />
 
-        {/* Slow gold dashed ring */}
-
+        {/* Slow gold ring */}
         <div
           className="
             absolute
@@ -129,8 +122,7 @@ export default function CoreSpinLoader() {
           "
         />
 
-        {/* Main navy + gold ring */}
-
+        {/* Main ring */}
         <div
           className="
             absolute
@@ -144,8 +136,7 @@ export default function CoreSpinLoader() {
           "
         />
 
-        {/* Inner gold reverse ring */}
-
+        {/* Reverse ring */}
         <div
           className="
             absolute
@@ -159,10 +150,7 @@ export default function CoreSpinLoader() {
           "
         />
 
-        {/* ===================================================
-            PRINT DISC
-        ==================================================== */}
-
+        {/* Print disc */}
         <div
           className="
             relative
@@ -177,8 +165,6 @@ export default function CoreSpinLoader() {
             animate-newprint-loader-disc
           "
         >
-          {/* Gold inner print ring */}
-
           <div
             className="
               h-[21px]
@@ -188,8 +174,6 @@ export default function CoreSpinLoader() {
               border-[#B9954F]/[0.65]
             "
           />
-
-          {/* Center */}
 
           <div
             className="
@@ -203,10 +187,7 @@ export default function CoreSpinLoader() {
           />
         </div>
 
-        {/* ===================================================
-            ORBIT DOT
-        ==================================================== */}
-
+        {/* Orbit dot */}
         <div
           className="
             absolute
@@ -230,10 +211,7 @@ export default function CoreSpinLoader() {
         </div>
       </div>
 
-      {/* =====================================================
-          BRAND
-      ====================================================== */}
-
+      {/* Brand */}
       <div className="relative mt-8 text-center">
         <div
           className="
@@ -251,7 +229,16 @@ export default function CoreSpinLoader() {
           </span>
         </div>
 
-        <div className="mt-2.5 flex h-5 items-center justify-center overflow-hidden">
+        <div
+          className="
+            mt-2.5
+            flex
+            h-5
+            items-center
+            justify-center
+            overflow-hidden
+          "
+        >
           <span
             key={loadingText}
             className="
@@ -269,10 +256,7 @@ export default function CoreSpinLoader() {
         </div>
       </div>
 
-      {/* =====================================================
-          PROGRESS
-      ====================================================== */}
-
+      {/* Progress */}
       <div
         className="
           relative
@@ -298,16 +282,14 @@ export default function CoreSpinLoader() {
         />
       </div>
 
-      {/* =====================================================
-          BOTTOM MICRO TEXT
-      ====================================================== */}
-
+      {/* Bottom text */}
       <div
         className="
           absolute
           bottom-[calc(24px+env(safe-area-inset-bottom))]
           left-0
           right-0
+          px-4
           text-center
         "
       >
@@ -323,101 +305,6 @@ export default function CoreSpinLoader() {
           Custom printing • Made with care
         </span>
       </div>
-
-      {/* =====================================================
-          ANIMATIONS
-      ====================================================== */}
-
-      <style jsx>{`
-        .animate-newprint-loader-slow {
-          animation: newprintLoaderSpin 12s linear infinite;
-        }
-
-        .animate-newprint-loader-main {
-          animation: newprintLoaderSpin 1.8s
-            cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-
-        .animate-newprint-loader-reverse {
-          animation: newprintLoaderSpinReverse 1.25s
-            linear infinite;
-        }
-
-        .animate-newprint-loader-disc {
-          animation: newprintLoaderSpin 3.5s linear infinite;
-        }
-
-        .animate-newprint-loader-orbit {
-          animation: newprintLoaderSpin 2.7s linear infinite;
-        }
-
-        .animate-newprint-loader-text {
-          animation: newprintLoaderText 0.45s ease-out;
-        }
-
-        .animate-newprint-loader-progress {
-          animation: newprintLoaderProgress 1.6s
-            ease-in-out infinite;
-        }
-
-        @keyframes newprintLoaderSpin {
-          from {
-            transform: rotate(0deg);
-          }
-
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @keyframes newprintLoaderSpinReverse {
-          from {
-            transform: rotate(360deg);
-          }
-
-          to {
-            transform: rotate(0deg);
-          }
-        }
-
-        @keyframes newprintLoaderText {
-          from {
-            opacity: 0;
-            transform: translateY(5px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes newprintLoaderProgress {
-          0% {
-            transform: translateX(-160%);
-          }
-
-          50% {
-            transform: translateX(190%);
-          }
-
-          100% {
-            transform: translateX(370%);
-          }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .animate-newprint-loader-slow,
-          .animate-newprint-loader-main,
-          .animate-newprint-loader-reverse,
-          .animate-newprint-loader-disc,
-          .animate-newprint-loader-orbit,
-          .animate-newprint-loader-text,
-          .animate-newprint-loader-progress {
-            animation: none !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }

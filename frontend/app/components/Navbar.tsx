@@ -1011,31 +1011,7 @@ export default function Navbar() {
           MOBILE MENU CSS
       ====================================================== */}
 
-      <style jsx>{`
-        /*
-         * Menu lock is intentionally separate from the
-         * homepage loader lock.
-         *
-         * This means opening the mobile menu cannot accidentally
-         * remove the initial loader's scroll lock.
-         */
-
-        :global(html.newprint-menu-open),
-        :global(body.newprint-menu-open) {
-          overflow: hidden !important;
-          overscroll-behavior: none !important;
-        }
-
-        :global(body.newprint-menu-open) {
-          touch-action: none !important;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          div {
-            transition-duration: 0.01ms !important;
-          }
-        }
-      `}</style>
+      
     </header>
   );
 }
