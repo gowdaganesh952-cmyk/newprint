@@ -539,11 +539,23 @@ export default function FeaturedProducts() {
           setError(true);
           setProducts([]);
         }
-      } finally {
-        if (mounted) {
-          setLoading(false);
-        }
-      }
+      }finally {
+  if (mounted) {
+    setLoading(false);
+
+    /*
+     * Tell the homepage loader that the featured
+     * products request has completed.
+     *
+     * This fires for both success and error so
+     * the loader can never get stuck waiting
+     * for the API.
+     */
+    window.dispatchEvent(
+      new CustomEvent("newprint:products-ready")
+    );
+  }
+}
     };
 
     fetchFeaturedProducts();

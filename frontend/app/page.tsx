@@ -1,15 +1,18 @@
 import Navbar from "./components/Navbar";
+import HomePageReady from "./components/HomePageReady";
 import FeaturedProducts from "./components/FeaturedProducts";
 import Footer from "./components/Footer";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-white">
+    <main className="min-h-screen w-full overflow-x-hidden bg-white text-black">
       <Navbar />
 
-      <FeaturedProducts />
+      <HomePageReady>
+        <FeaturedProducts />
+      </HomePageReady>
 
       <Footer />
-    </div>
+    </main>
   );
 }

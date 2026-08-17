@@ -24,3 +24,144 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* ============================================================
+   NEW PRINT - GLOBAL PERFORMANCE / MOBILE
+============================================================ */
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  background: #ffffff;
+  color: #000000;
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  text-rendering: optimizeLegibility;
+
+  overscroll-behavior-x: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+}
+
+img {
+  height: auto;
+}
+
+button,
+a,
+input,
+textarea,
+select {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+}
+
+a {
+  text-decoration: none;
+}
+
+/* Prevent horizontal scrolling from mobile components */
+main,
+section,
+header,
+footer {
+  max-width: 100%;
+}
+
+/* ============================================================
+   MOBILE SAFE AREA
+============================================================ */
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ============================================================
+   ACCESSIBILITY
+============================================================ */
+
+:focus-visible {
+  outline: 2px solid #b9954f;
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   REDUCED MOTION
+============================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 640px) {
+  html {
+    scroll-padding-top: 66px;
+  }
+
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  html {
+    scroll-padding-top: 70px;
+  }
+}
+
+/* ============================================================
+   DESKTOP
+============================================================ */
+
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: 76px;
+  }
+}

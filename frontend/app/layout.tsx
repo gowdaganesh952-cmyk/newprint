@@ -5,15 +5,33 @@ import WhatsAppButton from "./components/WhatsAppButton";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "New Print",
+  title: {
+    default: "New Print",
+    template: "%s | New Print",
+  },
   description:
     "New Print - Custom jersey printing, apparel printing, and sports team printing.",
+  applicationName: "New Print",
+  keywords: [
+    "New Print",
+    "custom jerseys",
+    "jersey printing",
+    "sports team printing",
+    "custom apparel",
+    "custom t-shirts",
+    "apparel printing",
+  ],
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FFFFFF",
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#FFFFFF",
 };
 
 export default function RootLayout({
@@ -24,7 +42,7 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body>
+        <body className="min-h-[100dvh] overflow-x-hidden bg-white text-black antialiased">
           <CartProvider>
             {children}
             <WhatsAppButton />
