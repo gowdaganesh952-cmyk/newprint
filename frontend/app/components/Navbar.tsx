@@ -1,9 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Show, UserButton, useUser } from "@clerk/nextjs";
+import {
+  Show,
+  UserButton,
+  useUser,
+} from "@clerk/nextjs";
 import { useCart } from "./cart/CartProvider";
 
 // ============================================================
@@ -33,7 +42,11 @@ const navLinks = [
 // CART ICON
 // ============================================================
 
-function CartIcon({ mobile = false }: { mobile?: boolean }) {
+function CartIcon({
+  mobile = false,
+}: {
+  mobile?: boolean;
+}) {
   return (
     <svg
       width={mobile ? 22 : 23}
@@ -48,6 +61,7 @@ function CartIcon({ mobile = false }: { mobile?: boolean }) {
     >
       <circle cx="8" cy="21" r="1" />
       <circle cx="19" cy="21" r="1" />
+
       <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
     </svg>
   );
@@ -57,7 +71,11 @@ function CartIcon({ mobile = false }: { mobile?: boolean }) {
 // MENU ICON
 // ============================================================
 
-function MenuIcon({ open }: { open: boolean }) {
+function MenuIcon({
+  open,
+}: {
+  open: boolean;
+}) {
   if (open) {
     return (
       <svg
@@ -97,6 +115,29 @@ function MenuIcon({ open }: { open: boolean }) {
 }
 
 // ============================================================
+// ARROW ICON
+// ============================================================
+
+function ArrowIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M7 17L17 7" />
+      <path d="M7 7H17V17" />
+    </svg>
+  );
+}
+
+// ============================================================
 // NAVBAR
 // ============================================================
 
@@ -105,8 +146,19 @@ export default function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false);
 
   const pathname = usePathname();
+
   const { user } = useUser();
-  const { itemCount, isInitializing } = useCart();
+
+  const {
+    itemCount,
+    isInitializing,
+  } = useCart();
+
+  const scrollFrameRef = useRef<number | null>(
+    null
+  );
+
+  const menuOpenRef = useRef(false);
 
   const dashboardPath =
     user?.publicMetadata?.role === "admin"
@@ -118,46 +170,106 @@ export default function Navbar() {
   // ==========================================================
 
   useEffect(() => {
-    let ticking = false;
+    const updateScrollState = () => {
+      scrollFrameRef.current = null;
 
-    const handleScroll = () => {
-      if (ticking) return;
+      const nextScrolled =
+        window.scrollY > 12;
 
-      ticking = true;
+      setIsScrolled((previous) => {
+        if (previous === nextScrolled) {
+          return previous;
+        }
 
-      window.requestAnimationFrame(() => {
-        setIsScrolled(window.scrollY > 12);
-        ticking = false;
+        return nextScrolled;
       });
     };
 
-    handleScroll();
+    const handleScroll = () => {
+      if (
+        scrollFrameRef.current !== null
+      ) {
+        return;
+      }
 
-    window.addEventListener("scroll", handleScroll, {
-      passive: true,
-    });
+      scrollFrameRef.current =
+        window.requestAnimationFrame(
+          updateScrollState
+        );
+    };
+
+    /*
+     * Set the correct initial state immediately.
+     */
+    updateScrollState();
+
+    window.addEventListener(
+      "scroll",
+      handleScroll,
+      {
+        passive: true,
+      }
+    );
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener(
+        "scroll",
+        handleScroll
+      );
+
+      if (
+        scrollFrameRef.current !== null
+      ) {
+        window.cancelAnimationFrame(
+          scrollFrameRef.current
+        );
+
+        scrollFrameRef.current = null;
+      }
     };
   }, []);
 
   // ==========================================================
-  // LOCK BODY WHEN MOBILE MENU OPEN
+  // MOBILE MENU SCROLL LOCK
   // ==========================================================
 
   useEffect(() => {
+    menuOpenRef.current = isOpen;
+
+    /*
+     * The initial homepage loader also controls these classes.
+     *
+     * We therefore use classes instead of permanently
+     * overwriting the loader's scroll-lock state.
+     */
     if (!isOpen) {
-      document.body.style.overflow = "";
+      document.documentElement.classList.remove(
+        "newprint-menu-open"
+      );
+
+      document.body.classList.remove(
+        "newprint-menu-open"
+      );
+
       return;
     }
 
-    const previousOverflow = document.body.style.overflow;
+    document.documentElement.classList.add(
+      "newprint-menu-open"
+    );
 
-    document.body.style.overflow = "hidden";
+    document.body.classList.add(
+      "newprint-menu-open"
+    );
 
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.documentElement.classList.remove(
+        "newprint-menu-open"
+      );
+
+      document.body.classList.remove(
+        "newprint-menu-open"
+      );
     };
   }, [isOpen]);
 
@@ -174,40 +286,98 @@ export default function Navbar() {
   // ==========================================================
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return;
+    }
 
-    const handleEscape = (event: KeyboardEvent) => {
+    const handleEscape = (
+      event: KeyboardEvent
+    ) => {
       if (event.key === "Escape") {
         setIsOpen(false);
       }
     };
 
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener(
+      "keydown",
+      handleEscape
+    );
 
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener(
+        "keydown",
+        handleEscape
+      );
     };
   }, [isOpen]);
+
+  // ==========================================================
+  // CLOSE MENU WHEN SCREEN BECOMES DESKTOP
+  // ==========================================================
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      "(min-width: 768px)"
+    );
+
+    const handleMediaChange = (
+      event: MediaQueryListEvent
+    ) => {
+      if (event.matches) {
+        setIsOpen(false);
+      }
+    };
+
+    mediaQuery.addEventListener(
+      "change",
+      handleMediaChange
+    );
+
+    return () => {
+      mediaQuery.removeEventListener(
+        "change",
+        handleMediaChange
+      );
+    };
+  }, []);
 
   // ==========================================================
   // ACTIVE LINK
   // ==========================================================
 
-  const isLinkActive = (href: string) => {
-    if (href === "/") {
-      return pathname === "/";
-    }
+  const isLinkActive = useCallback(
+    (href: string) => {
+      if (href === "/") {
+        return pathname === "/";
+      }
 
-    return pathname === href || pathname.startsWith(`${href}/`);
-  };
+      return (
+        pathname === href ||
+        pathname.startsWith(`${href}/`)
+      );
+    },
+    [pathname]
+  );
 
   // ==========================================================
   // CLOSE MENU
   // ==========================================================
 
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setIsOpen(false);
-  };
+  }, []);
+
+  // ==========================================================
+  // TOGGLE MENU
+  // ==========================================================
+
+  const toggleMenu = useCallback(() => {
+    setIsOpen((previous) => !previous);
+  }, []);
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <header
@@ -215,12 +385,16 @@ export default function Navbar() {
         fixed
         inset-x-0
         top-0
-        z-50
+        z-[500]
         w-full
         border-b
-        bg-white
-        transition-[box-shadow,border-color]
+        bg-white/95
+        backdrop-blur-[10px]
+        supports-[backdrop-filter]:bg-white/90
+        transition-[box-shadow,border-color,background-color]
         duration-200
+        ease-out
+
         ${
           isScrolled
             ? "border-[#E5E7EB] shadow-[0_4px_20px_-14px_rgba(10,27,46,0.35)]"
@@ -257,9 +431,10 @@ export default function Navbar() {
           onClick={closeMenu}
           className="
             flex
+            min-h-[44px]
             shrink-0
             items-center
-            rounded-[6px]
+            rounded-[7px]
             focus-visible:outline-none
             focus-visible:ring-2
             focus-visible:ring-[#B9954F]
@@ -291,11 +466,17 @@ export default function Navbar() {
 
         <div className="hidden items-center md:flex">
           <nav
-            className="flex items-center gap-6 lg:gap-8"
+            className="
+              flex
+              items-center
+              gap-6
+              lg:gap-8
+            "
             aria-label="Desktop navigation"
           >
             {navLinks.map((link) => {
-              const active = isLinkActive(link.href);
+              const active =
+                isLinkActive(link.href);
 
               return (
                 <Link
@@ -303,97 +484,186 @@ export default function Navbar() {
                   href={link.href}
                   className={`
                     relative
-                    rounded-[4px]
-                    py-2
-                    text-[14px]
-                    font-medium
+                    flex
+                    min-h-[44px]
+                    items-center
+                    justify-center
+                    px-1
+                    text-[13px]
+                    font-semibold
                     transition-colors
                     duration-150
+                    ease-out
                     focus-visible:outline-none
                     focus-visible:ring-2
                     focus-visible:ring-[#B9954F]
+                    focus-visible:ring-offset-2
+
                     ${
                       active
                         ? "text-[#0A1B2E]"
                         : "text-[#64748B] hover:text-[#0A1B2E]"
                     }
+
+                    after:absolute
+                    after:bottom-[7px]
+                    after:left-1/2
+                    after:h-[2px]
+                    after:-translate-x-1/2
+                    after:rounded-full
+                    after:bg-[#B9954F]
+                    after:transition-all
+                    after:duration-200
+
+                    ${
+                      active
+                        ? "after:w-5"
+                        : "after:w-0 hover:after:w-4"
+                    }
                   `}
                 >
                   {link.name}
-
-                  <span
-                    className={`
-                      absolute
-                      bottom-0
-                      left-0
-                      h-[2px]
-                      rounded-full
-                      bg-[#B9954F]
-                      transition-[width]
-                      duration-150
-                      ${
-                        active
-                          ? "w-full"
-                          : "w-0"
-                      }
-                    `}
-                  />
                 </Link>
               );
             })}
           </nav>
+        </div>
 
-          {/* ==================================================
-              DESKTOP ACTIONS
-          ================================================== */}
+        {/* ====================================================
+            DESKTOP ACTIONS
+        ==================================================== */}
 
-          <div className="ml-7 flex items-center gap-3 lg:ml-8 lg:gap-4">
-            {/* Cart */}
+        <div className="hidden items-center gap-2 md:flex">
+          {/* Cart */}
 
+          <Link
+            href="/cart"
+            className="
+              relative
+              flex
+              h-10
+              w-10
+              items-center
+              justify-center
+              rounded-[9px]
+              text-[#0A1B2E]
+              transition-colors
+              duration-150
+              hover:bg-[#F7F7F5]
+              hover:text-[#B9954F]
+              focus-visible:outline-none
+              focus-visible:ring-2
+              focus-visible:ring-[#B9954F]
+            "
+            aria-label={
+              itemCount > 0
+                ? `View cart with ${itemCount} items`
+                : "View cart"
+            }
+          >
+            <CartIcon />
+
+            {!isInitializing &&
+              itemCount > 0 && (
+                <span
+                  className="
+                    absolute
+                    right-0
+                    top-0
+                    flex
+                    h-[17px]
+                    min-w-[17px]
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-[#B9954F]
+                    px-1
+                    text-[9px]
+                    font-extrabold
+                    leading-none
+                    text-white
+                  "
+                >
+                  {itemCount > 99
+                    ? "99+"
+                    : itemCount}
+                </span>
+              )}
+          </Link>
+
+          {/* Signed out */}
+
+          <Show when="signed-out">
             <Link
-              href="/cart"
+              href="/sign-up"
               className="
-                relative
-                flex
+                inline-flex
                 h-10
-                w-10
                 items-center
                 justify-center
                 rounded-[9px]
-                text-[#0A1B2E]
-                transition-colors
+                bg-[#0A1B2E]
+                px-5
+                text-sm
+                font-semibold
+                text-white
+                shadow-sm
+                transition-[background-color,transform]
                 duration-150
-                hover:bg-[#F7F7F5]
-                hover:text-[#B9954F]
+                hover:bg-[#142C46]
+                active:scale-[0.98]
+                active:bg-[#081827]
                 focus-visible:outline-none
                 focus-visible:ring-2
                 focus-visible:ring-[#B9954F]
+                focus-visible:ring-offset-2
               "
-              aria-label={
-                itemCount > 0
-                  ? `View cart with ${itemCount} items`
-                  : "View cart"
-              }
             >
-              <CartIcon />
-
-              {!isInitializing && itemCount > 0 && (
-                <span className="absolute right-0 top-0 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#B9954F] px-1 text-[9px] font-extrabold leading-none text-white">
-                  {itemCount > 99 ? "99+" : itemCount}
-                </span>
-              )}
+              Sign Up
             </Link>
 
-            {/* Signed out */}
+            <Link
+              href="/sign-in"
+              className="
+                inline-flex
+                h-10
+                items-center
+                justify-center
+                rounded-[9px]
+                border
+                border-[#D8DDE3]
+                bg-white
+                px-5
+                text-sm
+                font-semibold
+                text-[#0A1B2E]
+                transition-[background-color,border-color,transform]
+                duration-150
+                hover:border-[#B9954F]/60
+                hover:bg-[#F7F7F5]
+                active:scale-[0.98]
+                focus-visible:outline-none
+                focus-visible:ring-2
+                focus-visible:ring-[#B9954F]
+                focus-visible:ring-offset-2
+              "
+            >
+              Login
+            </Link>
+          </Show>
 
-            <Show when="signed-out">
+          {/* Signed in */}
+
+          <Show when="signed-in">
+            <div className="flex items-center gap-2">
               <Link
-                href="/sign-up"
+                href={dashboardPath}
                 className="
                   inline-flex
                   h-10
                   items-center
                   justify-center
+                  gap-2
                   rounded-[9px]
                   bg-[#0A1B2E]
                   px-5
@@ -401,9 +671,10 @@ export default function Navbar() {
                   font-semibold
                   text-white
                   shadow-sm
-                  transition-colors
+                  transition-[background-color,transform]
                   duration-150
                   hover:bg-[#142C46]
+                  active:scale-[0.98]
                   active:bg-[#081827]
                   focus-visible:outline-none
                   focus-visible:ring-2
@@ -411,52 +682,21 @@ export default function Navbar() {
                   focus-visible:ring-offset-2
                 "
               >
-                Login
+                Dashboard
+
+                <ArrowIcon />
               </Link>
-            </Show>
 
-            {/* Signed in */}
-
-            <Show when="signed-in">
-              <div className="flex items-center gap-3">
-                <Link
-                  href={dashboardPath}
-                  className="
-                    inline-flex
-                    h-10
-                    items-center
-                    justify-center
-                    rounded-[9px]
-                    bg-[#0A1B2E]
-                    px-5
-                    text-sm
-                    font-semibold
-                    text-white
-                    shadow-sm
-                    transition-colors
-                    duration-150
-                    hover:bg-[#142C46]
-                    active:bg-[#081827]
-                    focus-visible:outline-none
-                    focus-visible:ring-2
-                    focus-visible:ring-[#B9954F]
-                    focus-visible:ring-offset-2
-                  "
-                >
-                  Dashboard
-                </Link>
-
-                <UserButton
-                  appearance={{
-                    elements: {
-                      avatarBox:
-                        "h-9 w-9 ring-1 ring-[#E5E7EB]",
-                    },
-                  }}
-                />
-              </div>
-            </Show>
-          </div>
+              <UserButton
+                appearance={{
+                  elements: {
+                    avatarBox:
+                      "h-9 w-9 ring-1 ring-[#E5E7EB]",
+                  },
+                }}
+              />
+            </div>
+          </Show>
         </div>
 
         {/* ====================================================
@@ -492,18 +732,39 @@ export default function Navbar() {
           >
             <CartIcon mobile />
 
-            {!isInitializing && itemCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full bg-[#B9954F] px-1 text-[9px] font-extrabold leading-none text-white">
-                {itemCount > 99 ? "99+" : itemCount}
-              </span>
-            )}
+            {!isInitializing &&
+              itemCount > 0 && (
+                <span
+                  className="
+                    absolute
+                    right-1
+                    top-1
+                    flex
+                    h-[17px]
+                    min-w-[17px]
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-[#B9954F]
+                    px-1
+                    text-[9px]
+                    font-extrabold
+                    leading-none
+                    text-white
+                  "
+                >
+                  {itemCount > 99
+                    ? "99+"
+                    : itemCount}
+                </span>
+              )}
           </Link>
 
           {/* Mobile menu */}
 
           <button
             type="button"
-            onClick={() => setIsOpen((previous) => !previous)}
+            onClick={toggleMenu}
             className="
               flex
               h-11
@@ -536,93 +797,151 @@ export default function Navbar() {
           MOBILE NAVIGATION
       ====================================================== */}
 
-      {isOpen && (
-        <div
-          id="mobile-navigation"
+      <div
+        id="mobile-navigation"
+        className={`
+          overflow-hidden
+          border-t
+          border-[#E5E7EB]
+          bg-white
+          md:hidden
+          transition-[max-height,opacity]
+          duration-200
+          ease-out
+          ${
+            isOpen
+              ? "max-h-[calc(100dvh-66px)] opacity-100"
+              : "pointer-events-none max-h-0 opacity-0"
+          }
+        `}
+        aria-hidden={!isOpen}
+      >
+        <nav
           className="
-            border-t
-            border-[#E5E7EB]
-            bg-white
-            md:hidden
+            mx-auto
+            max-h-[calc(100dvh-66px)]
+            w-full
+            max-w-7xl
+            overflow-y-auto
+            overscroll-contain
+            px-4
+            pb-[calc(20px+env(safe-area-inset-bottom))]
+            pt-3
+            sm:px-6
           "
+          aria-label="Mobile navigation"
         >
-          <nav
-            className="
-              mx-auto
-              w-full
-              max-w-7xl
-              px-4
-              pb-5
-              pt-3
-              sm:px-6
-            "
-            aria-label="Mobile navigation"
-          >
-            <div className="space-y-1">
-              {navLinks.map((link) => {
-                const active = isLinkActive(link.href);
+          {/* ==================================================
+              NAV LINKS
+          =================================================== */}
 
-                return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={closeMenu}
-                    className={`
-                      flex
-                      min-h-[50px]
-                      items-center
-                      rounded-[9px]
-                      px-4
-                      text-[15px]
-                      font-medium
-                      transition-colors
-                      duration-150
-                      ${
-                        active
-                          ? "bg-[#F7F7F5] font-semibold text-[#0A1B2E]"
-                          : "text-[#334155] active:bg-[#F7F7F5]"
-                      }
-                    `}
-                  >
+          <div className="space-y-1">
+            {navLinks.map((link) => {
+              const active =
+                isLinkActive(link.href);
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={closeMenu}
+                  tabIndex={isOpen ? 0 : -1}
+                  className={`
+                    flex
+                    min-h-[50px]
+                    items-center
+                    justify-between
+                    rounded-[9px]
+                    px-4
+                    text-[15px]
+                    font-semibold
+                    transition-colors
+                    duration-150
+                    focus-visible:outline-none
+                    focus-visible:ring-2
+                    focus-visible:ring-[#B9954F]
+
+                    ${
+                      active
+                        ? "bg-[#F7F7F5] text-[#0A1B2E]"
+                        : "text-[#64748B] active:bg-[#F7F7F5] active:text-[#0A1B2E]"
+                    }
+                  `}
+                >
+                  <span>
+                    {link.name}
+                  </span>
+
+                  {active && (
                     <span
-                      className={`
-                        mr-3
+                      className="
                         h-1.5
                         w-1.5
                         rounded-full
-                        ${
-                          active
-                            ? "bg-[#B9954F]"
-                            : "bg-transparent"
-                        }
-                      `}
+                        bg-[#B9954F]
+                      "
+                      aria-hidden="true"
                     />
+                  )}
+                </Link>
+              );
+            })}
+          </div>
 
-                    {link.name}
-                  </Link>
-                );
-              })}
-            </div>
+          {/* ==================================================
+              MOBILE DIVIDER
+          =================================================== */}
 
-            {/* ==================================================
-                MOBILE ACCOUNT AREA
-            ================================================== */}
+          <div className="my-4 h-px bg-[#E5E7EB]" />
 
-            <div className="mt-3 border-t border-[#E5E7EB] pt-4">
-              <Show when="signed-out">
+          {/* ==================================================
+              MOBILE AUTH
+          =================================================== */}
+
+          <div className="space-y-3">
+            <Show when="signed-out">
+              <div className="grid grid-cols-2 gap-2.5">
                 <Link
-                  href="/sign-up"
+                  href="/sign-in"
                   onClick={closeMenu}
+                  tabIndex={isOpen ? 0 : -1}
                   className="
                     flex
                     min-h-[50px]
-                    w-full
+                    items-center
+                    justify-center
+                    rounded-[9px]
+                    border
+                    border-[#D8DDE3]
+                    bg-white
+                    px-4
+                    text-[14px]
+                    font-semibold
+                    text-[#0A1B2E]
+                    transition-colors
+                    duration-150
+                    active:bg-[#F7F7F5]
+                    focus-visible:outline-none
+                    focus-visible:ring-2
+                    focus-visible:ring-[#B9954F]
+                  "
+                >
+                  Login
+                </Link>
+
+                <Link
+                  href="/sign-up"
+                  onClick={closeMenu}
+                  tabIndex={isOpen ? 0 : -1}
+                  className="
+                    flex
+                    min-h-[50px]
                     items-center
                     justify-center
                     rounded-[9px]
                     bg-[#0A1B2E]
                     px-4
-                    text-[15px]
+                    text-[14px]
                     font-semibold
                     text-white
                     shadow-sm
@@ -635,34 +954,88 @@ export default function Navbar() {
                     focus-visible:ring-offset-2
                   "
                 >
-                  Login
+                  Sign Up
                 </Link>
-              </Show>
+              </div>
+            </Show>
 
-              <Show when="signed-in">
-                <div className="flex min-h-[58px] items-center justify-between rounded-[9px] bg-[#F7F7F5] px-4">
-                  <Link
-                    href={dashboardPath}
-                    onClick={closeMenu}
-                    className="text-sm font-semibold text-[#0A1B2E] transition-colors duration-150 hover:text-[#B9954F]"
-                  >
-                    Dashboard
-                  </Link>
+            <Show when="signed-in">
+              <div
+                className="
+                  flex
+                  min-h-[58px]
+                  items-center
+                  justify-between
+                  rounded-[9px]
+                  bg-[#F7F7F5]
+                  px-4
+                "
+              >
+                <Link
+                  href={dashboardPath}
+                  onClick={closeMenu}
+                  tabIndex={isOpen ? 0 : -1}
+                  className="
+                    flex
+                    min-h-[44px]
+                    items-center
+                    text-sm
+                    font-semibold
+                    text-[#0A1B2E]
+                    transition-colors
+                    duration-150
+                    hover:text-[#B9954F]
+                    focus-visible:outline-none
+                    focus-visible:ring-2
+                    focus-visible:ring-[#B9954F]
+                  "
+                >
+                  Dashboard
+                </Link>
 
-                  <UserButton
-                    appearance={{
-                      elements: {
-                        avatarBox:
-                          "h-9 w-9 ring-1 ring-[#E5E7EB]",
-                      },
-                    }}
-                  />
-                </div>
-              </Show>
-            </div>
-          </nav>
-        </div>
-      )}
+                <UserButton
+                  appearance={{
+                    elements: {
+                      avatarBox:
+                        "h-9 w-9 ring-1 ring-[#E5E7EB]",
+                    },
+                  }}
+                />
+              </div>
+            </Show>
+          </div>
+        </nav>
+      </div>
+
+      {/* ======================================================
+          MOBILE MENU CSS
+      ====================================================== */}
+
+      <style jsx>{`
+        /*
+         * Menu lock is intentionally separate from the
+         * homepage loader lock.
+         *
+         * This means opening the mobile menu cannot accidentally
+         * remove the initial loader's scroll lock.
+         */
+
+        :global(html.newprint-menu-open),
+        :global(body.newprint-menu-open) {
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+        }
+
+        :global(body.newprint-menu-open) {
+          touch-action: none !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          div {
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
     </header>
   );
 }

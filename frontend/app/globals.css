@@ -1,53 +1,39 @@
 @import "tailwindcss";
 
+/* ============================================================
+   NEW PRINT — GLOBAL THEME
+============================================================ */
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #0a1b2e;
+
+  --newprint-navy: #0a1b2e;
+  --newprint-gold: #b9954f;
+  --newprint-white: #ffffff;
+  --newprint-soft: #f7f7f5;
+  --newprint-border: #e5e7eb;
+  --newprint-muted: #64748b;
 }
+
+/* ============================================================
+   TAILWIND THEME
+============================================================ */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --color-newprint-navy: var(--newprint-navy);
+  --color-newprint-gold: var(--newprint-gold);
+  --color-newprint-soft: var(--newprint-soft);
+
+  --font-sans: Arial, Helvetica, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
 /* ============================================================
-   NEW PRINT - GLOBAL PERFORMANCE / MOBILE
+   GLOBAL RESET
 ============================================================ */
-
-html {
-  scroll-behavior: smooth;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-body {
-  margin: 0;
-  min-height: 100dvh;
-  overflow-x: hidden;
-  background: #ffffff;
-  color: #000000;
-
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-
-  text-rendering: optimizeLegibility;
-
-  overscroll-behavior-x: none;
-}
 
 *,
 *::before,
@@ -55,9 +41,70 @@ body {
   box-sizing: border-box;
 }
 
+html {
+  width: 100%;
+  min-height: 100%;
+  background: #ffffff;
+
+  /*
+   * Smooth native scrolling.
+   *
+   * We intentionally do NOT use JavaScript scroll animation.
+   * Native scrolling is smoother and more reliable on mobile.
+   */
+  scroll-behavior: smooth;
+
+  /*
+   * Prevent mobile browsers from automatically enlarging text.
+   */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+
+  /*
+   * Prevent horizontal overscroll.
+   */
+  overscroll-behavior-x: none;
+}
+
+body {
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+
+  overflow-x: hidden;
+
+  background: #ffffff;
+  color: #0a1b2e;
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  /*
+   * Better text rendering.
+   */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  text-rendering: optimizeLegibility;
+
+  /*
+   * Prevent horizontal rubber-band movement.
+   */
+  overscroll-behavior-x: none;
+}
+
+/* ============================================================
+   MEDIA
+============================================================ */
+
 img,
 video,
-svg {
+svg,
+canvas {
+  display: block;
   max-width: 100%;
 }
 
@@ -65,33 +112,79 @@ img {
   height: auto;
 }
 
-button,
-a,
-input,
-textarea,
-select {
-  -webkit-tap-highlight-color: transparent;
+/*
+ * Prevent media from accidentally creating horizontal overflow.
+ */
+video {
+  width: 100%;
 }
 
-button,
-a {
-  touch-action: manipulation;
-}
-
-button {
-  font: inherit;
-}
+/* ============================================================
+   LINKS
+============================================================ */
 
 a {
+  color: inherit;
   text-decoration: none;
 }
 
-/* Prevent horizontal scrolling from mobile components */
-main,
-section,
-header,
-footer {
-  max-width: 100%;
+/* ============================================================
+   BUTTONS / FORM ELEMENTS
+============================================================ */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a {
+  /*
+   * Better touch behavior on phones.
+   */
+  touch-action: manipulation;
+
+  /*
+   * Remove the default mobile tap highlight.
+   */
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* ============================================================
+   FOCUS
+============================================================ */
+
+:focus-visible {
+  outline: 2px solid var(--newprint-gold);
+  outline-offset: 3px;
+}
+
+/* ============================================================
+   PAGE LOADING LOCK
+============================================================ */
+
+/*
+ * HomePageReady adds this class while the initial homepage
+ * loader is active.
+ *
+ * This guarantees that the user cannot scroll the page behind
+ * the loader.
+ */
+
+html.newprint-page-loading,
+body.newprint-page-loading {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.newprint-page-loading {
+  touch-action: none !important;
 }
 
 /* ============================================================
@@ -105,12 +198,72 @@ footer {
 }
 
 /* ============================================================
-   ACCESSIBILITY
+   PAGE WIDTH PROTECTION
 ============================================================ */
 
-:focus-visible {
-  outline: 2px solid #b9954f;
-  outline-offset: 2px;
+/*
+ * Prevent common mobile components from creating horizontal
+ * overflow.
+ */
+
+main,
+section,
+header,
+footer,
+nav,
+article {
+  max-width: 100%;
+}
+
+/* ============================================================
+   SELECTION
+============================================================ */
+
+::selection {
+  background: rgba(185, 149, 79, 0.22);
+  color: #0a1b2e;
+}
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 640px) {
+  html {
+    /*
+     * Keeps anchored sections from hiding behind the mobile
+     * navbar.
+     */
+    scroll-padding-top: 68px;
+  }
+
+  body {
+    /*
+     * Prevent vertical overscroll bounce from creating a
+     * strange feeling around the edges of the page.
+     */
+    overscroll-behavior-y: none;
+  }
+}
+
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  html {
+    scroll-padding-top: 72px;
+  }
+}
+
+/* ============================================================
+   DESKTOP
+============================================================ */
+
+@media (min-width: 1024px) {
+  html {
+    scroll-padding-top: 76px;
+  }
 }
 
 /* ============================================================
@@ -133,35 +286,38 @@ footer {
 }
 
 /* ============================================================
-   MOBILE
+   MOBILE PERFORMANCE
 ============================================================ */
 
-@media (max-width: 640px) {
-  html {
-    scroll-padding-top: 66px;
-  }
+/*
+ * Avoid expensive hover-style behavior on touch devices.
+ * Your product cards already use md:hover, so these rules
+ * naturally keep the mobile experience simpler.
+ */
 
-  body {
-    overscroll-behavior-y: none;
-  }
-}
-
-/* ============================================================
-   TABLET
-============================================================ */
-
-@media (min-width: 641px) and (max-width: 1023px) {
-  html {
-    scroll-padding-top: 70px;
+@media (hover: none) and (pointer: coarse) {
+  button,
+  a {
+    transition-duration: 150ms;
   }
 }
 
 /* ============================================================
-   DESKTOP
+   VERY SMALL PHONES
 ============================================================ */
 
-@media (min-width: 1024px) {
+@media (max-width: 380px) {
   html {
-    scroll-padding-top: 76px;
+    scroll-padding-top: 64px;
+  }
+}
+
+/* ============================================================
+   LANDSCAPE MOBILE
+============================================================ */
+
+@media (max-width: 900px) and (orientation: landscape) {
+  html {
+    scroll-padding-top: 60px;
   }
 }

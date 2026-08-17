@@ -1,6 +1,11 @@
 "use client";
 
-import { memo, useEffect, useState } from "react";
+import {
+  memo,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useApi } from "../lib/api";
@@ -52,6 +57,20 @@ interface ProductsResponse {
 }
 
 // ============================================================
+// CONSTANTS
+// ============================================================
+
+const FEATURED_LIMIT = 6;
+
+/*
+ * Safety timeout for product-image readiness.
+ *
+ * We don't want one broken/slow image to keep the entire
+ * homepage behind the loader forever.
+ */
+const IMAGE_READY_TIMEOUT = 4500;
+
+// ============================================================
 // ARROW ICON
 // ============================================================
 
@@ -84,10 +103,23 @@ ArrowUpRightIcon.displayName = "ArrowUpRightIcon";
 const ProductSkeleton = memo(() => {
   return (
     <div
-      className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white"
+      className="
+        overflow-hidden
+        rounded-[12px]
+        border
+        border-[#E5E7EB]
+        bg-white
+      "
       aria-hidden="true"
     >
-      <div className="aspect-square w-full animate-pulse bg-[#E8E7E3]" />
+      <div
+        className="
+          aspect-square
+          w-full
+          animate-pulse
+          bg-[#E8E7E3]
+        "
+      />
 
       <div className="p-3.5 sm:p-5">
         <div className="h-2.5 w-20 animate-pulse rounded bg-[#E5E7EB]" />
@@ -255,6 +287,7 @@ function getVariantDisplayPrices(product: Product) {
             best.originalPrice,
             best.price
           );
+
           const currentDiscount = getDiscountPercentage(
             current.originalPrice,
             current.price
@@ -276,24 +309,149 @@ function getVariantDisplayPrices(product: Product) {
 }
 
 // ============================================================
+// IMAGE VALIDATION
+// ============================================================
+
+function getProductImage(product: Product): string {
+  const rawImage = product.images?.[0];
+
+  if (
+    typeof rawImage === "string" &&
+    rawImage.trim().length > 0 &&
+    (
+      rawImage.startsWith("https://") ||
+      rawImage.startsWith("http://") ||
+      rawImage.startsWith("/")
+    )
+  ) {
+    return rawImage;
+  }
+
+  return "/images/product-placeholder.jpg";
+}
+
+// ============================================================
+// WAIT FOR INITIAL PRODUCT IMAGES
+// ============================================================
+
+async function waitForInitialProductImages(): Promise<void> {
+  /*
+   * Only wait for images that are actually present in the
+   * rendered featured-product grid.
+   */
+  const images = Array.from(
+    document.querySelectorAll<HTMLImageElement>(
+      "[data-newprint-featured-image='true']"
+    )
+  );
+
+  /*
+   * No images means the page has nothing to wait for.
+   */
+  if (images.length === 0) {
+    return;
+  }
+
+  /*
+   * Wait for each image to either:
+   *
+   * - already be complete,
+   * - successfully decode,
+   * - load,
+   * - or fail.
+   *
+   * We don't reject on image errors because the page itself
+   * should still become usable.
+   */
+  await Promise.all(
+    images.map(
+      (image) =>
+        new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+
+          const finish = () => {
+            image.removeEventListener("load", finish);
+            image.removeEventListener("error", finish);
+            resolve();
+          };
+
+          image.addEventListener("load", finish, {
+            once: true,
+          });
+
+          image.addEventListener("error", finish, {
+            once: true,
+          });
+
+          /*
+           * Extra safety for a browser/network edge case.
+           */
+          window.setTimeout(finish, IMAGE_READY_TIMEOUT);
+        })
+    )
+  );
+
+  /*
+   * If supported, allow the browser to finish decoding
+   * images before the loader is removed.
+   */
+  await Promise.all(
+    images.map(async (image) => {
+      if (typeof image.decode !== "function") {
+        return;
+      }
+
+      try {
+        await image.decode();
+      } catch {
+        /*
+         * A failed decode should never block the homepage.
+         */
+      }
+    })
+  );
+}
+
+// ============================================================
+// DISPATCH HOMEPAGE READY EVENT
+// ============================================================
+
+function dispatchProductsReady() {
+  /*
+   * Custom event consumed by HomePageReady.
+   */
+  window.dispatchEvent(
+    new CustomEvent("newprint:products-ready")
+  );
+}
+
+// ============================================================
 // PRODUCT CARD
 // ============================================================
 
 const ProductCard = memo(
-  ({ product, index }: { product: Product; index: number }) => {
-    const rawImage = product.images?.[0];
+  ({
+    product,
+    index,
+  }: {
+    product: Product;
+    index: number;
+  }) => {
+    const image = getProductImage(product);
 
-    const image =
-      typeof rawImage === "string" &&
-      rawImage.trim().length > 0 &&
-      (rawImage.startsWith("https://") ||
-        rawImage.startsWith("http://") ||
-        rawImage.startsWith("/"))
-        ? rawImage
-        : "/images/product-placeholder.jpg";
+    const productHref =
+      `/products/${product.slug || product._id}`;
 
-    const productHref = `/products/${product.slug || product._id}`;
-
+    /*
+     * Only the first two images receive priority.
+     *
+     * This is especially useful for the mobile 2-column
+     * layout where the first two products are immediately
+     * visible.
+     */
     const isPriority = index < 2;
 
     const isVariantProduct =
@@ -315,10 +473,11 @@ const ProductCard = memo(
         ? product.originalPrice
         : null;
 
-    const discountPercentage = getDiscountPercentage(
-      originalPrice,
-      sellingPrice
-    );
+    const discountPercentage =
+      getDiscountPercentage(
+        originalPrice,
+        sellingPrice
+      );
 
     const hasFixedDiscount =
       discountPercentage > 0;
@@ -362,7 +521,12 @@ const ProductCard = memo(
               fill
               priority={isPriority}
               loading={isPriority ? undefined : "lazy"}
-              sizes="(max-width: 639px) 50vw, (max-width: 1023px) 33vw, 25vw"
+              sizes="
+                (max-width: 639px) 50vw,
+                (max-width: 1023px) 33vw,
+                25vw
+              "
+              data-newprint-featured-image="true"
               className="
                 object-cover
                 transition-transform
@@ -385,7 +549,8 @@ const ProductCard = memo(
             {(hasFixedDiscount || variantDiscount > 0) && (
               <div className="absolute bottom-2.5 left-2.5 z-10 sm:bottom-3 sm:left-3">
                 <span className="inline-flex items-center rounded-[5px] bg-[#D92D20] px-2 py-1.5 text-[9px] font-extrabold leading-none text-white shadow-sm sm:px-2.5 sm:text-[10px]">
-                  {variantDiscount > 0 && !hasFixedDiscount
+                  {variantDiscount > 0 &&
+                  !hasFixedDiscount
                     ? `↓${variantDiscount}%`
                     : `↓${discountPercentage}%`}
                 </span>
@@ -421,7 +586,8 @@ const ProductCard = memo(
             )}
 
             <div className="mt-3 border-t border-[#E5E7EB] pt-3 sm:mt-4 sm:pt-3.5">
-              {!isVariantProduct && sellingPrice !== null ? (
+              {!isVariantProduct &&
+              sellingPrice !== null ? (
                 <div className="min-w-0">
                   {hasFixedDiscount ? (
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -430,16 +596,22 @@ const ProductCard = memo(
                       </span>
 
                       <span className="text-[10px] font-semibold text-[#94A3B8] line-through sm:text-xs">
-                        {formatProductPrice(originalPrice!)}
+                        {formatProductPrice(
+                          originalPrice!
+                        )}
                       </span>
 
                       <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
-                        {formatProductPrice(sellingPrice)}
+                        {formatProductPrice(
+                          sellingPrice
+                        )}
                       </span>
                     </div>
                   ) : (
                     <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
-                      {formatProductPrice(sellingPrice)}
+                      {formatProductPrice(
+                        sellingPrice
+                      )}
                     </span>
                   )}
                 </div>
@@ -467,7 +639,8 @@ const ProductCard = memo(
                   {variantPrices.discountedVariant &&
                     variantDiscount > 0 && (
                       <p className="mt-1 text-[9px] font-medium text-[#94A3B8]">
-                        Selected options may have different prices
+                        Selected options may have different
+                        prices
                       </p>
                     )}
                 </div>
@@ -503,6 +676,26 @@ export default function FeaturedProducts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
+  const readyDispatchedRef = useRef(false);
+
+  // ==========================================================
+  // DISPATCH READY ONCE
+  // ==========================================================
+
+  const notifyHomepageReady = () => {
+    if (readyDispatchedRef.current) {
+      return;
+    }
+
+    readyDispatchedRef.current = true;
+
+    dispatchProductsReady();
+  };
+
+  // ==========================================================
+  // FETCH FEATURED PRODUCTS
+  // ==========================================================
+
   useEffect(() => {
     let mounted = true;
 
@@ -511,51 +704,51 @@ export default function FeaturedProducts() {
         setLoading(true);
         setError(false);
 
-        const response = await get<ProductsResponse>(
-          "/api/products?status=active&featured=true&limit=6"
-        );
+        const response =
+          await get<ProductsResponse>(
+            "/api/products?status=active&featured=true&limit=6"
+          );
 
-        if (!mounted) return;
+        if (!mounted) {
+          return;
+        }
 
-        const rawProducts = response?.products || response?.data || [];
+        const rawProducts =
+          response?.products ||
+          response?.data ||
+          [];
 
         if (!Array.isArray(rawProducts)) {
           setProducts([]);
           return;
         }
 
-        const featuredProducts = rawProducts
-          .filter(
-            (product) =>
-              product.status === "active" && product.featured === true
-          )
-          .slice(0, 6);
+        const featuredProducts =
+          rawProducts
+            .filter(
+              (product) =>
+                product &&
+                product.status === "active" &&
+                product.featured === true
+            )
+            .slice(0, FEATURED_LIMIT);
 
         setProducts(featuredProducts);
       } catch (err) {
-        console.error("Failed to fetch featured products:", err);
+        console.error(
+          "Failed to fetch featured products:",
+          err
+        );
 
         if (mounted) {
           setError(true);
           setProducts([]);
         }
-      }finally {
-  if (mounted) {
-    setLoading(false);
-
-    /*
-     * Tell the homepage loader that the featured
-     * products request has completed.
-     *
-     * This fires for both success and error so
-     * the loader can never get stuck waiting
-     * for the API.
-     */
-    window.dispatchEvent(
-      new CustomEvent("newprint:products-ready")
-    );
-  }
-}
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
     };
 
     fetchFeaturedProducts();
@@ -567,9 +760,103 @@ export default function FeaturedProducts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ==========================================================
+  // WAIT FOR RENDERED PRODUCT IMAGES
+  // ==========================================================
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const finishReadiness = async () => {
+      /*
+       * Give React one frame to commit the product cards.
+       */
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      /*
+       * Wait for the initial visible product images.
+       */
+      await waitForInitialProductImages();
+
+      if (cancelled) {
+        return;
+      }
+
+      /*
+       * Give the browser another frame after image decoding.
+       */
+      await new Promise<void>((resolve) => {
+        window.requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+
+      if (cancelled) {
+        return;
+      }
+
+      /*
+       * Tell HomePageReady:
+       *
+       * Featured Products data is ready.
+       * Initial product layout is rendered.
+       * Initial product images are ready enough to reveal.
+       */
+      notifyHomepageReady();
+    };
+
+    finishReadiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, products.length]);
+
+  // ==========================================================
+  // SAFETY READY FALLBACK
+  // ==========================================================
+
+  useEffect(() => {
+    /*
+     * If there are no products because the API returned an
+     * empty collection or an error, there are no product images
+     * to wait for.
+     */
+    if (loading) {
+      return;
+    }
+
+    if (products.length === 0) {
+      const timer = window.setTimeout(() => {
+        notifyHomepageReady();
+      }, 80);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+
+    return;
+  }, [loading, products.length]);
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
     <section
-      style={{ scrollBehavior: "smooth" }}
       className="
         relative
         w-full
@@ -583,7 +870,8 @@ export default function FeaturedProducts() {
     >
       {/* =====================================================
           LIGHT DECORATION
-      ===================================================== */}
+      ====================================================== */}
+
       <div
         className="
           pointer-events-none
@@ -619,11 +907,13 @@ export default function FeaturedProducts() {
 
       {/* =====================================================
           CONTAINER
-      ===================================================== */}
+      ====================================================== */}
+
       <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* ===================================================
             HEADER
         =================================================== */}
+
         <div className="mb-7 flex flex-col gap-5 sm:mb-9 lg:mb-11 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
             <div className="mb-3 flex items-center gap-2">
@@ -655,8 +945,8 @@ export default function FeaturedProducts() {
             </h2>
 
             <p className="mt-4 max-w-xl text-[13px] leading-6 text-[#64748B] sm:text-sm sm:leading-7 lg:text-base">
-              Discover custom products made for teams, businesses, events, and
-              everyday moments.
+              Discover custom products made for teams,
+              businesses, events, and everyday moments.
             </p>
           </div>
 
@@ -691,6 +981,7 @@ export default function FeaturedProducts() {
             "
           >
             View All Products
+
             <ArrowUpRightIcon className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -698,12 +989,22 @@ export default function FeaturedProducts() {
         {/* ===================================================
             LOADING
         =================================================== */}
+
         {loading && (
           <div
-            className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4 lg:gap-6"
+            className="
+              grid
+              grid-cols-2
+              gap-3
+              sm:gap-5
+              lg:grid-cols-4
+              lg:gap-6
+            "
             aria-label="Loading products"
           >
-            {Array.from({ length: 4 }).map((_, index) => (
+            {Array.from({
+              length: 4,
+            }).map((_, index) => (
               <ProductSkeleton key={index} />
             ))}
           </div>
@@ -712,27 +1013,47 @@ export default function FeaturedProducts() {
         {/* ===================================================
             ERROR
         =================================================== */}
+
         {!loading && error && <ErrorState />}
 
         {/* ===================================================
             EMPTY
         =================================================== */}
-        {!loading && !error && products.length === 0 && <EmptyState />}
+
+        {!loading &&
+          !error &&
+          products.length === 0 && (
+            <EmptyState />
+          )}
 
         {/* ===================================================
             PRODUCTS
         =================================================== */}
-        {!loading && !error && products.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4 lg:gap-6">
-            {products.map((product, index) => (
-              <ProductCard
-                key={product._id}
-                product={product}
-                index={index}
-              />
-            ))}
-          </div>
-        )}
+
+        {!loading &&
+          !error &&
+          products.length > 0 && (
+            <div
+              className="
+                grid
+                grid-cols-2
+                gap-3
+                sm:gap-5
+                lg:grid-cols-4
+                lg:gap-6
+              "
+            >
+              {products.map(
+                (product, index) => (
+                  <ProductCard
+                    key={product._id}
+                    product={product}
+                    index={index}
+                  />
+                )
+              )}
+            </div>
+          )}
       </div>
     </section>
   );

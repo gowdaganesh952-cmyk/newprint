@@ -4,14 +4,21 @@ import { CartProvider } from "./components/cart/CartProvider";
 import WhatsAppButton from "./components/WhatsAppButton";
 import "./globals.css";
 
+// ============================================================
+// METADATA
+// ============================================================
+
 export const metadata: Metadata = {
   title: {
     default: "New Print",
     template: "%s | New Print",
   },
+
   description:
     "New Print - Custom jersey printing, apparel printing, and sports team printing.",
+
   applicationName: "New Print",
+
   keywords: [
     "New Print",
     "custom jerseys",
@@ -21,11 +28,20 @@ export const metadata: Metadata = {
     "custom t-shirts",
     "apparel printing",
   ],
+
   robots: {
     index: true,
     follow: true,
   },
+
+  icons: {
+    icon: "/favicon.ico",
+  },
 };
+
+// ============================================================
+// VIEWPORT
+// ============================================================
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -33,6 +49,10 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   themeColor: "#FFFFFF",
 };
+
+// ============================================================
+// ROOT LAYOUT
+// ============================================================
 
 export default function RootLayout({
   children,
@@ -42,9 +62,19 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="min-h-[100dvh] overflow-x-hidden bg-white text-black antialiased">
+        <body
+          className="
+            min-h-[100dvh]
+            w-full
+            overflow-x-hidden
+            bg-white
+            text-[#0A1B2E]
+            antialiased
+          "
+        >
           <CartProvider>
             {children}
+
             <WhatsAppButton />
           </CartProvider>
         </body>

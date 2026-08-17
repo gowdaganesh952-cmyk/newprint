@@ -1,43 +1,167 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+import CoreSpinLoader from "./CoreSpinLoader";
+
+// ============================================================
+// TYPES
+// ============================================================
 
 interface HomePageReadyProps {
-  children: React.ReactNode;
+  children: ReactNode;
 }
+
+// ============================================================
+// SETTINGS
+// ============================================================
+
+/*
+ * Small delay after everything reports ready.
+ *
+ * This gives React + the browser enough time to paint the
+ * final product grid and settle the layout before we reveal it.
+ */
+const FINAL_PAINT_DELAY = 180;
+
+/*
+ * Loader fade duration.
+ * Keep this matched with duration-500 below.
+ */
+const LOADER_FADE_DURATION = 500;
+
+/*
+ * Emergency fallback only.
+ *
+ * If an unexpected API/browser problem prevents the ready
+ * event from firing, we must never trap the visitor forever.
+ */
+const SAFETY_TIMEOUT = 12000;
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export default function HomePageReady({
   children,
 }: HomePageReadyProps) {
-  const [isReady, setIsReady] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
+  const [removeLoader, setRemoveLoader] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const mountedRef = useRef(true);
+  const readyStartedRef = useRef(false);
 
-    const markReady = () => {
-      if (!mounted) return;
+  // ==========================================================
+  // COMPLETE PAGE LOADING
+  // ==========================================================
 
-      /*
-       * Give the browser one extra paint cycle.
-       * This prevents the loader from disappearing
-       * before the homepage has visually settled.
-       */
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (mounted) {
-            setIsReady(true);
-          }
-        });
-      });
-    };
+  const completePageLoading = useCallback(() => {
+    /*
+     * Prevent duplicate calls from:
+     *
+     * - products-ready
+     * - window.load
+     * - safety timeout
+     */
+    if (readyStartedRef.current) {
+      return;
+    }
+
+    readyStartedRef.current = true;
 
     /*
-     * FeaturedProducts dispatches this event after
-     * its API request has completed.
+     * Frame 1:
+     * allow React state/layout updates to enter the browser.
      */
-    const handleProductsReady = () => {
-      markReady();
+    window.requestAnimationFrame(() => {
+      /*
+       * Frame 2:
+       * allow the browser to calculate layout.
+       */
+      window.requestAnimationFrame(() => {
+        /*
+         * Small final delay so product cards/images/layout
+         * have a chance to visually settle.
+         */
+        window.setTimeout(() => {
+          if (!mountedRef.current) {
+            return;
+          }
+
+          setPageReady(true);
+
+          /*
+           * Remove loader from DOM only AFTER its
+           * opacity transition has completed.
+           */
+          window.setTimeout(() => {
+            if (!mountedRef.current) {
+              return;
+            }
+
+            setRemoveLoader(true);
+          }, LOADER_FADE_DURATION);
+        }, FINAL_PAINT_DELAY);
+      });
+    });
+  }, []);
+
+  // ==========================================================
+  // INITIAL PAGE READINESS
+  // ==========================================================
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    let productsReady = false;
+    let browserReady = document.readyState === "complete";
+
+    // ========================================================
+    // CHECK IF EVERYTHING WE NEED IS READY
+    // ========================================================
+
+    const checkReady = () => {
+      /*
+       * We want BOTH:
+       *
+       * 1. Browser/document ready
+       * 2. Featured Products request finished
+       *
+       * Only then should the homepage become interactive.
+       */
+
+      if (productsReady && browserReady) {
+        completePageLoading();
+      }
     };
+
+    // ========================================================
+    // FEATURED PRODUCTS READY
+    // ========================================================
+
+    const handleProductsReady = () => {
+      productsReady = true;
+      checkReady();
+    };
+
+    // ========================================================
+    // BROWSER READY
+    // ========================================================
+
+    const handleWindowLoad = () => {
+      browserReady = true;
+      checkReady();
+    };
+
+    // ========================================================
+    // REGISTER EVENTS
+    // ========================================================
 
     window.addEventListener(
       "newprint:products-ready",
@@ -45,268 +169,208 @@ export default function HomePageReady({
     );
 
     /*
-     * If the browser has already loaded everything,
-     * don't wait for window.load.
+     * document.readyState can already be "complete"
+     * when this component mounts.
      */
-    if (document.readyState === "complete") {
-      const fallbackTimer = window.setTimeout(() => {
-        markReady();
-      }, 250);
-
-      return () => {
-        mounted = false;
-        window.clearTimeout(fallbackTimer);
-
-        window.removeEventListener(
-          "newprint:products-ready",
-          handleProductsReady
-        );
-      };
+    if (!browserReady) {
+      window.addEventListener("load", handleWindowLoad, {
+        once: true,
+      });
     }
 
-    /*
-     * Normal browser loading path.
-     */
-    const handleWindowLoad = () => {
-      const timer = window.setTimeout(() => {
-        markReady();
-      }, 400);
+    // ========================================================
+    // SAFETY FALLBACK
+    // ========================================================
 
-      window.addEventListener(
+    const safetyTimer = window.setTimeout(() => {
+      /*
+       * This is NOT the normal loading mechanism.
+       *
+       * It only prevents a broken network request or unusual
+       * browser state from trapping the visitor on the loader.
+       */
+      completePageLoading();
+    }, SAFETY_TIMEOUT);
+
+    // ========================================================
+    // CLEANUP
+    // ========================================================
+
+    return () => {
+      mountedRef.current = false;
+
+      window.removeEventListener(
         "newprint:products-ready",
         handleProductsReady
       );
-
-      return timer;
-    };
-
-    window.addEventListener("load", handleWindowLoad, {
-      once: true,
-    });
-
-    /*
-     * Safety fallback.
-     * The loader should NEVER get stuck forever if
-     * an API or image behaves unexpectedly.
-     */
-    const safetyTimer = window.setTimeout(() => {
-      markReady();
-    }, 5000);
-
-    return () => {
-      mounted = false;
 
       window.removeEventListener(
         "load",
         handleWindowLoad
       );
 
-      window.removeEventListener(
-        "newprint:products-ready",
-        handleProductsReady
-      );
-
       window.clearTimeout(safetyTimer);
     };
-  }, []);
+  }, [completePageLoading]);
+
+  // ==========================================================
+  // LOCK PAGE WHILE LOADING
+  // ==========================================================
+
+  useEffect(() => {
+    /*
+     * Once the page is ready, restore normal scrolling.
+     */
+    if (pageReady) {
+      document.documentElement.classList.remove(
+        "newprint-page-loading"
+      );
+
+      document.body.classList.remove(
+        "newprint-page-loading"
+      );
+
+      return;
+    }
+
+    /*
+     * Save the user's current scroll position.
+     *
+     * Normally this will be 0 on first load, but preserving it
+     * also makes refresh/navigation behavior safer.
+     */
+    const scrollY = window.scrollY;
+
+    const previousBodyOverflow =
+      document.body.style.overflow;
+
+    const previousHtmlOverflow =
+      document.documentElement.style.overflow;
+
+    const previousBodyTouchAction =
+      document.body.style.touchAction;
+
+    // ========================================================
+    // LOCK DESKTOP + MOBILE SCROLL
+    // ========================================================
+
+    document.documentElement.classList.add(
+      "newprint-page-loading"
+    );
+
+    document.body.classList.add(
+      "newprint-page-loading"
+    );
+
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    /*
+     * Prevent touch scrolling behind the loader.
+     */
+    document.body.style.touchAction = "none";
+
+    // ========================================================
+    // CLEANUP / UNLOCK
+    // ========================================================
+
+    return () => {
+      document.documentElement.classList.remove(
+        "newprint-page-loading"
+      );
+
+      document.body.classList.remove(
+        "newprint-page-loading"
+      );
+
+      document.documentElement.style.overflow =
+        previousHtmlOverflow;
+
+      document.body.style.overflow =
+        previousBodyOverflow;
+
+      document.body.style.touchAction =
+        previousBodyTouchAction;
+
+      /*
+       * Keep the visitor at the same position when the
+       * loading overlay disappears.
+       */
+      window.scrollTo({
+        top: scrollY,
+        left: 0,
+        behavior: "auto",
+      });
+    };
+  }, [pageReady]);
+
+  // ==========================================================
+  // RENDER
+  // ==========================================================
 
   return (
     <>
       {/* =====================================================
-          HOME CONTENT
+          ACTUAL HOMEPAGE
+          
+          Everything renders behind the loader so React,
+          Clerk, cart state and product data can initialize
+          without the visitor seeing layout changes.
       ====================================================== */}
 
       <div
         className={`
-          min-h-screen
+          relative
+          min-h-[100dvh]
           w-full
+          bg-white
           transition-opacity
           duration-500
           ease-out
           ${
-            isReady
+            pageReady
               ? "opacity-100"
-              : "opacity-100"
+              : "pointer-events-none select-none opacity-0"
           }
         `}
+        aria-hidden={!pageReady}
       >
         {children}
       </div>
 
       {/* =====================================================
-          INITIAL PAGE LOADER
+          FULL SCREEN LOADER
       ====================================================== */}
 
-      <div
-        className={`
-          fixed
-          inset-0
-          z-[99999]
-          flex
-          min-h-[100dvh]
-          w-full
-          items-center
-          justify-center
-          bg-white
-          transition-all
-          duration-500
-          ease-out
-          ${
-            isReady
-              ? "pointer-events-none opacity-0"
-              : "opacity-100"
-          }
-        `}
-        aria-hidden={isReady}
-      >
-        <CorePageLoader />
-      </div>
+      {!removeLoader && (
+        <div
+          className={`
+            fixed
+            inset-0
+            z-[99999]
+            flex
+            h-[100dvh]
+            w-full
+            items-center
+            justify-center
+            overflow-hidden
+            bg-white
+            transition-opacity
+            duration-500
+            ease-out
+            ${
+              pageReady
+                ? "pointer-events-none opacity-0"
+                : "pointer-events-auto opacity-100"
+            }
+          `}
+          role="status"
+          aria-label="Loading New Print"
+          aria-live="polite"
+        >
+          <CoreSpinLoader />
+        </div>
+      )}
     </>
-  );
-}
-
-/* ============================================================
-   PAGE LOADER
-============================================================ */
-
-function CorePageLoader() {
-  return (
-    <div className="flex w-full flex-col items-center justify-center px-5">
-      {/* Loader */}
-      <div className="relative flex h-[92px] w-[92px] items-center justify-center sm:h-[104px] sm:w-[104px]">
-        {/* Soft glow */}
-        <div className="absolute inset-[14px] rounded-full bg-black/[0.035] blur-xl" />
-
-        {/* Outer ring */}
-        <div className="absolute inset-0 rounded-full border border-black/[0.08]" />
-
-        {/* Dashed ring */}
-        <div className="absolute inset-[5px] rounded-full border border-dashed border-black/[0.10] animate-newprint-spin-slow" />
-
-        {/* Main ring */}
-        <div className="absolute inset-[10px] rounded-full border-[3px] border-transparent border-t-black border-r-black/20 animate-newprint-spin" />
-
-        {/* Reverse ring */}
-        <div className="absolute inset-[22px] rounded-full border-2 border-transparent border-b-black/60 border-l-black/20 animate-newprint-spin-reverse" />
-
-        {/* Print disc */}
-        <div className="relative flex h-[34px] w-[34px] items-center justify-center rounded-full bg-black shadow-[0_5px_20px_rgba(0,0,0,0.18)] animate-newprint-disc">
-          <div className="h-[20px] w-[20px] rounded-full border border-white/30" />
-
-          <div className="absolute h-[6px] w-[6px] rounded-full bg-white" />
-        </div>
-
-        {/* Orbiting dot */}
-        <div className="absolute inset-0 animate-newprint-orbit">
-          <span className="absolute left-1/2 top-[1px] h-[5px] w-[5px] -translate-x-1/2 rounded-full bg-black" />
-        </div>
-      </div>
-
-      {/* Brand */}
-      <div className="mt-7 text-center">
-        <div className="text-[13px] font-extrabold uppercase tracking-[0.28em] text-black">
-          New Print
-        </div>
-
-        <div className="mt-2 h-5 overflow-hidden">
-          <span className="animate-newprint-text text-[10px] font-medium uppercase tracking-[0.18em] text-black/45">
-            Preparing your experience
-          </span>
-        </div>
-      </div>
-
-      {/* Progress */}
-      <div className="mt-5 h-[2px] w-[90px] overflow-hidden rounded-full bg-black/[0.08]">
-        <div className="h-full w-[36%] rounded-full bg-black animate-newprint-progress" />
-      </div>
-
-      <style jsx>{`
-        .animate-newprint-spin-slow {
-          animation: newprintSpin 14s linear infinite;
-        }
-
-        .animate-newprint-spin {
-          animation: newprintSpin 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-        }
-
-        .animate-newprint-spin-reverse {
-          animation: newprintSpinReverse 1.25s linear infinite;
-        }
-
-        .animate-newprint-disc {
-          animation: newprintSpin 3s linear infinite;
-        }
-
-        .animate-newprint-orbit {
-          animation: newprintSpin 2.8s linear infinite;
-        }
-
-        .animate-newprint-text {
-          animation: newprintText 0.6s ease-out;
-        }
-
-        .animate-newprint-progress {
-          animation: newprintProgress 1.6s ease-in-out infinite;
-        }
-
-        @keyframes newprintSpin {
-          from {
-            transform: rotate(0deg);
-          }
-
-          to {
-            transform: rotate(360deg);
-          }
-        }
-
-        @keyframes newprintSpinReverse {
-          from {
-            transform: rotate(360deg);
-          }
-
-          to {
-            transform: rotate(0deg);
-          }
-        }
-
-        @keyframes newprintText {
-          from {
-            opacity: 0;
-            transform: translateY(5px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes newprintProgress {
-          0% {
-            transform: translateX(-160%);
-          }
-
-          50% {
-            transform: translateX(180%);
-          }
-
-          100% {
-            transform: translateX(360%);
-          }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .animate-newprint-spin-slow,
-          .animate-newprint-spin,
-          .animate-newprint-spin-reverse,
-          .animate-newprint-disc,
-          .animate-newprint-orbit,
-          .animate-newprint-text,
-          .animate-newprint-progress {
-            animation: none !important;
-          }
-        }
-      `}</style>
-    </div>
   );
 }
