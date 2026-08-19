@@ -4,7 +4,22 @@ import mongoose from "mongoose";
    CONSTANTS
 ============================================================ */
 
-const MAX_PRINT_IMAGES = 3;
+/*
+ * ONE physical product can have
+ * maximum 6 print images.
+ *
+ * Example:
+ *
+ * quantity: 2
+ *
+ * Product 1:
+ *   images: 1–6
+ *
+ * Product 2:
+ *   images: 1–6
+ */
+
+const MAX_PRINT_IMAGES = 6;
 
 /* ============================================================
    PRINT IMAGE SCHEMA
@@ -13,19 +28,40 @@ const MAX_PRINT_IMAGES = 3;
 const printImageSchema =
   new mongoose.Schema(
     {
+      /*
+       * Cloudinary secure URL.
+       */
+
       url: {
         type: String,
+
         required: true,
+
         trim: true,
       },
 
+      /*
+       * Cloudinary public ID.
+       *
+       * Used later if an uploaded
+       * image needs to be deleted.
+       */
+
       publicId: {
         type: String,
+
         required: true,
+
         trim: true,
       },
     },
+
     {
+      /*
+       * Do not create a separate
+       * MongoDB _id for every image.
+       */
+
       _id: false,
     }
   );
@@ -35,6 +71,8 @@ const printImageSchema =
 ============================================================ */
 
 /*
+ * IMPORTANT:
+ *
  * ONE printUnit = ONE physical product.
  *
  * Example:
@@ -42,8 +80,10 @@ const printImageSchema =
  * quantity: 2
  *
  * printUnits: [
+ *
  *   {
  *     unitId: "unit_xxx",
+ *
  *     images: [
  *       { url, publicId },
  *       { url, publicId }
@@ -52,46 +92,101 @@ const printImageSchema =
  *
  *   {
  *     unitId: "unit_yyy",
+ *
  *     images: [
  *       { url, publicId }
  *     ]
  *   }
+ *
  * ]
  *
- * Product 1 and Product 2 therefore
- * have completely separate images.
+ *
+ * Therefore:
+ *
+ * quantity = 1
+ * printUnits.length = 1
+ *
+ * quantity = 2
+ * printUnits.length = 2
+ *
+ * quantity = 3
+ * printUnits.length = 3
+ *
+ *
+ * Each physical product:
+ *
+ * minimum:
+ *   0 images while editing cart
+ *
+ * maximum:
+ *   6 images
+ *
+ * The minimum 1 image requirement
+ * is intentionally NOT enforced here.
+ *
+ * This allows a newly-added product
+ * to exist in the cart before the
+ * customer uploads their print image.
+ *
+ * The cart controller / checkout
+ * validation will enforce:
+ *
+ *   minimum 1 image
+ *   maximum 6 images
  */
 
 const printUnitSchema =
   new mongoose.Schema(
     {
+      /* ======================================================
+         UNIT ID
+      ====================================================== */
+
       unitId: {
         type: String,
+
         required: true,
+
         trim: true,
       },
 
+      /* ======================================================
+         PRINT IMAGES
+      ====================================================== */
+
       images: {
-        type: [printImageSchema],
+        type: [
+          printImageSchema,
+        ],
 
         default: [],
 
         validate: {
           validator(images) {
             return (
-              Array.isArray(images) &&
+              Array.isArray(
+                images
+              ) &&
               images.length <=
                 MAX_PRINT_IMAGES
             );
           },
 
           message:
-            `Maximum ${MAX_PRINT_IMAGES} print images are allowed per product.`,
+            `Maximum ${MAX_PRINT_IMAGES} print images are allowed per physical product.`,
         },
       },
     },
 
     {
+      /*
+       * printUnit itself does not
+       * need an automatic MongoDB _id.
+       *
+       * unitId is our own stable
+       * identifier.
+       */
+
       _id: false,
     }
   );
@@ -120,15 +215,20 @@ const cartItemSchema =
       ====================================================== */
 
       /*
-       * Identifies the exact product + variant.
+       * Identifies the exact
+       * product + selected variant.
        *
-       * Example:
+       * Examples:
        *
        * productId
        *
-       * productId|Capacity:500ml
+       * productId|Size:M
        *
-       * productId|Capacity:1000ml
+       * productId|Color:Black|Size:M
+       *
+       * The controller generates this
+       * value from the validated
+       * selections.
        */
 
       itemKey: {
@@ -143,6 +243,14 @@ const cartItemSchema =
          PRODUCT INFORMATION SNAPSHOT
       ====================================================== */
 
+      /*
+       * Product name at the time the
+       * item is stored in the cart.
+       *
+       * Controller reconciles this
+       * with the current Product.
+       */
+
       name: {
         type: String,
 
@@ -150,6 +258,16 @@ const cartItemSchema =
 
         trim: true,
       },
+
+      /*
+       * Main product image.
+       *
+       * This is only the normal product
+       * image.
+       *
+       * Customer print images are stored
+       * separately inside printUnits.
+       */
 
       image: {
         type: String,
@@ -163,7 +281,12 @@ const cartItemSchema =
 
       /*
        * Price of the exact selected
-       * product variant.
+       * product / variant.
+       *
+       * Backend calculates and validates
+       * this price.
+       *
+       * Never trust a frontend price.
        */
 
       price: {
@@ -205,6 +328,8 @@ const cartItemSchema =
        *   Size: "M",
        *   Color: "Black"
        * }
+       *
+       * Stored as a Map in MongoDB.
        */
 
       selections: {
@@ -225,36 +350,65 @@ const cartItemSchema =
        * There is ONE printUnit for
        * EVERY physical product.
        *
+       * Example:
+       *
        * quantity = 1
-       * printUnits.length = 1
+       *
+       * printUnits = [
+       *   Product 1
+       * ]
+       *
        *
        * quantity = 2
-       * printUnits.length = 2
        *
-       * quantity = 3
-       * printUnits.length = 3
+       * printUnits = [
+       *   Product 1,
+       *   Product 2
+       * ]
        *
-       * Each unit can contain
-       * maximum 3 images.
        *
-       * Minimum 1 image is NOT enforced
-       * at MongoDB schema level because
-       * newly added products initially
-       * have zero images.
+       * quantity = 5
        *
-       * The cart/checkout controller
-       * will enforce minimum 1 image
-       * before checkout.
+       * printUnits = [
+       *   Product 1,
+       *   Product 2,
+       *   Product 3,
+       *   Product 4,
+       *   Product 5
+       * ]
+       *
+       *
+       * Each physical product can have:
+       *
+       *   1–6 images before checkout.
+       *
+       * New products may temporarily
+       * contain zero images until the
+       * customer customizes them.
+       *
+       * The controller enforces the
+       * minimum 1 image requirement
+       * before checkout / saving final
+       * customization.
        */
 
       printUnits: {
-        type: [printUnitSchema],
+        type: [
+          printUnitSchema,
+        ],
 
         default: [],
       },
     },
 
     {
+      /*
+       * Cart item itself needs its
+       * own _id because the frontend
+       * and backend use it to update
+       * quantity / remove an item.
+       */
+
       _id: true,
     }
   );
@@ -287,13 +441,20 @@ const cartSchema =
       ====================================================== */
 
       items: {
-        type: [cartItemSchema],
+        type: [
+          cartItemSchema,
+        ],
 
         default: [],
       },
     },
 
     {
+      /*
+       * createdAt
+       * updatedAt
+       */
+
       timestamps: true,
     }
   );

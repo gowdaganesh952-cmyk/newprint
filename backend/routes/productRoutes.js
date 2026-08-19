@@ -19,22 +19,41 @@ import {
 
 const router = express.Router();
 
+// ============================================================
+// GET ALL PRODUCTS
+// POST CREATE PRODUCT
+// ============================================================
+
 router
     .route("/")
-    .get(getProducts)
+    .get(
+        getProducts
+    )
     .post(
         authenticateUser,
-        upload.array("images", 10),
+        upload.array(
+            "images",
+            10
+        ),
         requireAdmin,
         createProduct
     );
 
+// ============================================================
+// GET / UPDATE / DELETE PRODUCT
+// ============================================================
+
 router
     .route("/:id")
-    .get(getProduct)
+    .get(
+        getProduct
+    )
     .put(
         authenticateUser,
-        upload.array("images", 10),
+        upload.array(
+            "images",
+            10
+        ),
         requireAdmin,
         updateProduct
     )

@@ -1,138 +1,103 @@
 "use client";
 
-import React, {
+import {
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from "react";
-
-import { useAuth } from "@clerk/nextjs";
-
-/* ============================================================
-   CONFIG
-============================================================ */
-
-const LOCAL_STORAGE_KEY =
-  "new_print_cart";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
-
-const MAX_PRINT_IMAGES = 3;
 
 /* ============================================================
    TYPES
 ============================================================ */
 
 export interface PrintImage {
-  _id?: string;
   url: string;
   publicId: string;
 }
 
 export interface PrintUnit {
-  /*
-   * ONE PrintUnit = ONE physical product.
-   *
-   * quantity = 2
-   *
-   * printUnits:
-   *
-   * [
-   *   Product 1 images,
-   *   Product 2 images
-   * ]
-   */
   unitId: string;
   images: PrintImage[];
 }
 
+export interface CartProduct {
+  _id: string;
+  name?: string;
+  price?: number | null;
+  image?: string;
+  images?: string[];
+  slug?: string;
+  [key: string]: unknown;
+}
+
 export interface CartItem {
-  _id?: string;
-
+  _id: string;
   productId: string;
-
   itemKey: string;
-
   name: string;
-
   image: string;
-
   price: number;
-
   quantity: number;
-
-  selections: Record<
-    string,
-    string
-  >;
-
+  selections: Record<string, string>;
   printUnits: PrintUnit[];
 }
+
+export interface CartData {
+  items: CartItem[];
+  subtotal: number;
+  shippingCharge: number;
+  total: number;
+  itemCount: number;
+}
+
+/* ============================================================
+   CONTEXT TYPE
+============================================================ */
 
 interface CartContextType {
   items: CartItem[];
 
+  subtotal: number;
+  shippingCharge: number;
+  total: number;
   itemCount: number;
 
-  subtotal: number;
+  loading: boolean;
+  updating: boolean;
 
-  isInitializing: boolean;
+  error: string | null;
 
-  isUpdating: boolean;
-
-  serverMessages: string[];
+  refreshCart: () => Promise<void>;
 
   addToCart: (
-    product: any,
-    selections: Record<
-      string,
-      string
-    >,
+    product: CartProduct,
+    selections?: Record<string, string>,
     quantity?: number
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 
   updateQuantity: (
-    itemIdOrKey: string,
+    itemId: string,
     quantity: number
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 
-  removeFromCart: (
-    itemIdOrKey: string
-  ) => Promise<void>;
+  removeItem: (
+    itemId: string
+  ) => Promise<boolean>;
 
-  clearCart: () => Promise<void>;
+  clearCart: () => Promise<boolean>;
 
-  /*
-   * Upload ONE image to Cloudinary.
-   *
-   * The returned image is NOT attached
-   * to a product until savePrintCustomization()
-   * is called.
-   */
+  savePrintCustomization: (
+    itemId: string,
+    printUnits: PrintUnit[]
+  ) => Promise<boolean>;
+
   uploadPrintImage: (
     file: File
-  ) => Promise<PrintImage>;
-
-  /*
-   * Save all images for one cart line.
-   */
-  savePrintCustomization: (
-    itemIdOrKey: string,
-    printUnits: PrintUnit[]
-  ) => Promise<void>;
-
-  /*
-   * True only when EVERY physical
-   * product has 1–3 images.
-   */
-  isCartPrintReady: boolean;
-
-  clearServerMessages: () => void;
+  ) => Promise<PrintImage | null>;
 }
 
 /* ============================================================
@@ -140,135 +105,101 @@ interface CartContextType {
 ============================================================ */
 
 const CartContext =
-  createContext<
-    CartContextType | undefined
-  >(undefined);
-
-/* ============================================================
-   HELPERS
-============================================================ */
-
-function normalizeValue(
-  value: unknown
-): string {
-  return String(
-    value ?? ""
-  ).trim();
-}
-
-/* ============================================================
-   ITEM KEY
-============================================================ */
-
-function createItemKey(
-  productId: string,
-  selections: Record<
-    string,
-    string
-  > = {}
-): string {
-  const sortedEntries =
-    Object.entries(
-      selections
-    )
-      .map(
-        ([key, value]) => [
-          normalizeValue(key),
-          normalizeValue(value),
-        ]
-      )
-      .filter(
-        ([key, value]) =>
-          key.length > 0 &&
-          value.length > 0
-      )
-      .sort(
-        ([a], [b]) =>
-          a.localeCompare(b)
-      );
-
-  const selectionPart =
-    sortedEntries
-      .map(
-        ([key, value]) =>
-          `${encodeURIComponent(
-            key
-          )}:${encodeURIComponent(
-            value
-          )}`
-      )
-      .join("|");
-
-  return selectionPart
-    ? `${productId}|${selectionPart}`
-    : productId;
-}
-
-/* ============================================================
-   UNIT ID
-============================================================ */
-
-function generateUnitId(): string {
-  return `unit_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
-}
-
-/* ============================================================
-   CREATE EMPTY PRINT UNITS
-============================================================ */
-
-function createEmptyPrintUnits(
-  quantity: number
-): PrintUnit[] {
-  const safeQuantity =
-    Math.max(
-      1,
-      Number(quantity) || 1
-    );
-
-  return Array.from(
-    {
-      length: safeQuantity,
-    },
-    () => ({
-      unitId:
-        generateUnitId(),
-
-      images: [],
-    })
+  createContext<CartContextType | undefined>(
+    undefined
   );
-}
 
 /* ============================================================
-   NORMALIZE PRINT IMAGE
+   API BASE URL
 ============================================================ */
 
-function normalizePrintImage(
-  image: any
-): PrintImage | null {
-  const url =
-    normalizeValue(
-      image?.url
-    );
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000"
+).replace(/\/+$/, "");
 
-  const publicId =
-    normalizeValue(
-      image?.publicId
-    );
+/* ============================================================
+   API REQUEST
+============================================================ */
 
-  if (!url || !publicId) {
-    return null;
+async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(
+    `${API_BASE_URL}${path}`,
+    {
+      ...options,
+
+      credentials: "include",
+
+      headers: {
+        ...(options.body instanceof FormData
+          ? {}
+          : {
+              "Content-Type":
+                "application/json",
+            }),
+
+        ...(options.headers || {}),
+      },
+
+      cache: "no-store",
+    }
+  );
+
+  const responseText =
+    await response.text();
+
+  let data: any = null;
+
+  if (responseText) {
+    try {
+      data =
+        JSON.parse(responseText);
+    } catch {
+      data = {
+        message: responseText,
+      };
+    }
   }
 
-  return {
-    _id:
-      image?._id,
+  if (!response.ok) {
+    console.error(
+      "========================================"
+    );
 
-    url,
+    console.error(
+      "CART API ERROR"
+    );
 
-    publicId,
-  };
+    console.error(
+      "Path:",
+      path
+    );
+
+    console.error(
+      "Status:",
+      response.status
+    );
+
+    console.error(
+      "Response:",
+      data
+    );
+
+    console.error(
+      "========================================"
+    );
+
+    throw new Error(
+      data?.message ||
+        data?.error ||
+        `Request failed with status ${response.status}.`
+    );
+  }
+
+  return data as T;
 }
 
 /* ============================================================
@@ -276,34 +207,37 @@ function normalizePrintImage(
 ============================================================ */
 
 function normalizePrintUnit(
-  unit: any
+  unit: any,
+  index: number
 ): PrintUnit {
   const images =
-    Array.isArray(
-      unit?.images
-    )
+    Array.isArray(unit?.images)
       ? unit.images
-          .slice(
-            0,
-            MAX_PRINT_IMAGES
+          .slice(0, 6)
+          .filter(
+            (image: any) =>
+              image?.url &&
+              image?.publicId
           )
           .map(
-            normalizePrintImage
-          )
-          .filter(
-            (
-              image
-            ): image is PrintImage =>
-              Boolean(image)
+            (image: any) => ({
+              url: String(
+                image.url
+              ),
+              publicId: String(
+                image.publicId
+              ),
+            })
           )
       : [];
 
   return {
     unitId:
-      normalizeValue(
-        unit?.unitId
-      ) ||
-      generateUnitId(),
+      typeof unit?.unitId ===
+        "string" &&
+      unit.unitId.trim()
+        ? unit.unitId
+        : `unit_${index}_${Date.now()}`,
 
     images,
   };
@@ -316,115 +250,111 @@ function normalizePrintUnit(
 function normalizeCartItem(
   item: any
 ): CartItem {
-  const rawSelections =
-    item?.selections;
-
-  const selections: Record<
-    string,
-    string
-  > =
-    rawSelections instanceof Map
-      ? Object.fromEntries(
-          rawSelections.entries()
-        )
-      : rawSelections &&
-        typeof rawSelections ===
-          "object" &&
-        !Array.isArray(
-          rawSelections
-        )
-      ? Object.fromEntries(
-          Object.entries(
-            rawSelections
-          ).map(
-            ([key, value]) => [
-              key,
-              String(value ?? ""),
-            ]
-          )
-        )
-      : {};
-
   const quantity = Math.max(
     1,
-    Number(
-      item?.quantity ?? 1
-    )
+    Number(item?.quantity) || 1
   );
 
-  const serverUnits =
+  let printUnits =
     Array.isArray(
       item?.printUnits
     )
-      ? item.printUnits
-          .map(
-            normalizePrintUnit
-          )
+      ? item.printUnits.map(
+          (
+            unit: any,
+            index: number
+          ) =>
+            normalizePrintUnit(
+              unit,
+              index
+            )
+        )
       : [];
 
-  /*
-   * Always make exactly
-   * quantity units.
-   *
-   * Existing images are preserved.
-   */
-  const printUnits: PrintUnit[] =
-    [];
-
-  for (
-    let index = 0;
-    index < quantity;
-    index++
+  if (
+    printUnits.length >
+    quantity
   ) {
-    if (
-      serverUnits[index]
-    ) {
-      printUnits.push(
-        serverUnits[index]
+    printUnits =
+      printUnits.slice(
+        0,
+        quantity
       );
-    } else {
-      printUnits.push({
-        unitId:
-          generateUnitId(),
-
-        images: [],
-      });
-    }
   }
 
+  while (
+    printUnits.length <
+    quantity
+  ) {
+    printUnits.push(
+      normalizePrintUnit(
+        null,
+        printUnits.length
+      )
+    );
+  }
+
+  const selections =
+    item?.selections &&
+    typeof item.selections ===
+      "object"
+      ? Object.fromEntries(
+          Object.entries(
+            item.selections
+          )
+            .map(
+              ([
+                key,
+                value,
+              ]) => [
+                String(key),
+                String(value ?? ""),
+              ]
+            )
+            .filter(
+              ([key, value]) =>
+                Boolean(
+                  key.trim()
+                ) &&
+                Boolean(
+                  value.trim()
+                )
+            )
+        )
+      : {};
+
   return {
-    _id:
-      item?._id,
+    _id: String(
+      item?._id || ""
+    ),
 
-    productId:
-      String(
-        item?.productId ?? ""
-      ),
+    productId: String(
+      item?.productId || ""
+    ),
 
-    itemKey:
-      item?.itemKey ||
-      createItemKey(
-        String(
-          item?.productId ?? ""
-        ),
-        selections
-      ),
+    itemKey: String(
+      item?.itemKey || ""
+    ),
 
-    name:
-      String(
-        item?.name ||
-          "Product"
-      ),
+    name: String(
+      item?.name ||
+        "Product"
+    ),
 
-    image:
-      String(
-        item?.image || ""
-      ),
+    image: String(
+      item?.image || ""
+    ),
 
     price:
-      Number(
-        item?.price ?? 0
-      ),
+      Number.isFinite(
+        Number(
+          item?.price
+        )
+      )
+        ? Number(
+            item.price
+          )
+        : 0,
 
     quantity,
 
@@ -435,21 +365,106 @@ function normalizeCartItem(
 }
 
 /* ============================================================
-   NORMALIZE SERVER ITEMS
+   NORMALIZE CART
 ============================================================ */
 
-function normalizeServerItems(
-  items: any
-): CartItem[] {
-  if (
-    !Array.isArray(items)
-  ) {
-    return [];
-  }
+function normalizeCart(
+  data: any
+): CartData {
+  const rawCart =
+    data?.cart ||
+    data ||
+    {};
 
-  return items.map(
-    normalizeCartItem
+  const items =
+    Array.isArray(
+      rawCart.items
+    )
+      ? rawCart.items.map(
+          normalizeCartItem
+        )
+      : [];
+
+  const subtotal = Number(
+    rawCart.subtotal
   );
+
+  const shippingCharge =
+    Number(
+      rawCart.shippingCharge
+    );
+
+  const total = Number(
+    rawCart.total
+  );
+
+  const itemCount = Number(
+    rawCart.itemCount
+  );
+
+  const calculatedSubtotal =
+    items.reduce(
+      (sum, item) =>
+        sum +
+        item.price *
+          item.quantity,
+      0
+    );
+
+  const calculatedItemCount =
+    items.reduce(
+      (sum, item) =>
+        sum +
+        item.quantity,
+      0
+    );
+
+  const safeSubtotal =
+    Number.isFinite(
+      subtotal
+    )
+      ? subtotal
+      : calculatedSubtotal;
+
+  const safeShipping =
+    Number.isFinite(
+      shippingCharge
+    )
+      ? shippingCharge
+      : 0;
+
+  return {
+    items,
+
+    subtotal:
+      safeSubtotal,
+
+    shippingCharge:
+      safeShipping,
+
+    total:
+      Number.isFinite(
+        total
+      )
+        ? total
+        : safeSubtotal +
+          safeShipping,
+
+    itemCount:
+      Number.isFinite(
+        itemCount
+      )
+        ? itemCount
+        : calculatedItemCount,
+  };
+}
+
+/* ============================================================
+   PROVIDER PROPS
+============================================================ */
+
+interface CartProviderProps {
+  children: ReactNode;
 }
 
 /* ============================================================
@@ -458,307 +473,107 @@ function normalizeServerItems(
 
 export function CartProvider({
   children,
-}: {
-  children: React.ReactNode;
-}) {
-  const {
-    isLoaded,
-    isSignedIn,
-    getToken,
-  } = useAuth();
+}: CartProviderProps) {
+  const [cart, setCart] =
+    useState<CartData>({
+      items: [],
+      subtotal: 0,
+      shippingCharge: 0,
+      total: 0,
+      itemCount: 0,
+    });
 
-  const [items, setItems] =
-    useState<CartItem[]>([]);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [
-    isInitializing,
-    setIsInitializing,
-  ] = useState(true);
+  const [updating, setUpdating] =
+    useState(false);
 
-  const [
-    isUpdating,
-    setIsUpdating,
-  ] = useState(false);
-
-  const [
-    serverMessages,
-    setServerMessages,
-  ] = useState<string[]>([]);
-
-  /* ==========================================================
-     SAVE LOCAL CART
-  ========================================================== */
-
-  const saveLocalCart =
-    useCallback(
-      (
-        cartItems: CartItem[]
-      ) => {
-        try {
-          localStorage.setItem(
-            LOCAL_STORAGE_KEY,
-            JSON.stringify(
-              cartItems
-            )
-          );
-        } catch (error) {
-          console.error(
-            "Failed to save local cart:",
-            error
-          );
-        }
-      },
-      []
+  const [error, setError] =
+    useState<string | null>(
+      null
     );
 
   /* ==========================================================
-     LOAD LOCAL CART
+     REFRESH CART
   ========================================================== */
 
-  const loadLocalCart =
-    useCallback((): CartItem[] => {
+  const refreshCart =
+    useCallback(async () => {
       try {
-        const stored =
-          localStorage.getItem(
-            LOCAL_STORAGE_KEY
+        setError(null);
+
+        const data =
+          await apiRequest<any>(
+            "/api/cart"
           );
 
-        if (!stored) {
-          return [];
-        }
-
-        const parsed =
-          JSON.parse(stored);
-
-        if (
-          !Array.isArray(parsed)
-        ) {
-          return [];
-        }
-
-        return parsed.map(
-          normalizeCartItem
+        setCart(
+          normalizeCart(data)
         );
-      } catch (error) {
-        console.error(
-          "Failed to load local cart:",
-          error
-        );
+      } catch (
+        requestError
+      ) {
+        const message =
+          requestError instanceof
+          Error
+            ? requestError.message
+            : "Failed to load cart.";
 
-        localStorage.removeItem(
-          LOCAL_STORAGE_KEY
-        );
-
-        return [];
+        setError(message);
+      } finally {
+        setLoading(false);
       }
     }, []);
 
   /* ==========================================================
-     INITIALIZE CART
+     INITIAL LOAD
   ========================================================== */
 
   useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
     let cancelled = false;
 
-    const initializeCart =
+    const loadCart =
       async () => {
-        setIsInitializing(
-          true
-        );
-
         try {
-          /* ================================================
-             GUEST CART
-          ================================================ */
-
-          if (!isSignedIn) {
-            const localCart =
-              loadLocalCart();
-
-            if (!cancelled) {
-              setItems(
-                localCart
-              );
-            }
-
-            return;
-          }
-
-          /* ================================================
-             AUTHENTICATED USER
-          ================================================ */
-
-          const token =
-            await getToken();
-
-          if (!token) {
-            if (!cancelled) {
-              setItems([]);
-            }
-
-            return;
-          }
-
-          /* ================================================
-             MERGE LOCAL CART
-          ================================================ */
-
-          const guestCart =
-            loadLocalCart();
-
-          if (
-            guestCart.length >
-            0
-          ) {
-            try {
-              const mergeResponse =
-                await fetch(
-                  `${API_URL}/api/cart/merge`,
-                  {
-                    method:
-                      "POST",
-
-                    headers: {
-                      "Content-Type":
-                        "application/json",
-
-                      Authorization:
-                        `Bearer ${token}`,
-                    },
-
-                    body:
-                      JSON.stringify(
-                        {
-                          items:
-                            guestCart,
-                        }
-                      ),
-                  }
-                );
-
-              const mergeData =
-                await mergeResponse
-                  .json()
-                  .catch(
-                    () => null
-                  );
-
-              if (
-                !mergeResponse.ok
-              ) {
-                console.error(
-                  "Cart merge failed:",
-                  mergeData
-                );
-              }
-            } catch (error) {
-              console.error(
-                "Cart merge error:",
-                error
-              );
-            }
-          }
-
-          /*
-           * Local cart has now been
-           * sent to server.
-           */
-          localStorage.removeItem(
-            LOCAL_STORAGE_KEY
-          );
-
-          /* ================================================
-             GET SERVER CART
-          ================================================ */
-
-          const response =
-            await fetch(
-              `${API_URL}/api/cart`,
-              {
-                method: "GET",
-
-                headers: {
-                  Authorization:
-                    `Bearer ${token}`,
-                },
-
-                cache: "no-store",
-              }
-            );
+          setError(null);
 
           const data =
-            await response
-              .json()
-              .catch(
-                () => null
-              );
-
-          if (
-            !response.ok
-          ) {
-            throw new Error(
-              data?.message ||
-                `Cart request failed: ${response.status}`
+            await apiRequest<any>(
+              "/api/cart"
             );
-          }
-
-          if (
-            !cancelled
-          ) {
-            if (
-              data?.success &&
-              data?.cart
-            ) {
-              setItems(
-                normalizeServerItems(
-                  data.cart.items
-                )
-              );
-
-              setServerMessages(
-                Array.isArray(
-                  data.messages
-                )
-                  ? data.messages
-                  : []
-              );
-            } else {
-              setItems([]);
-            }
-          }
-        } catch (error) {
-          console.error(
-            "Cart initialization error:",
-            error
-          );
 
           if (!cancelled) {
-            setItems([]);
+            setCart(
+              normalizeCart(
+                data
+              )
+            );
+          }
+        } catch (
+          requestError
+        ) {
+          if (!cancelled) {
+            setError(
+              requestError instanceof
+                Error
+                ? requestError.message
+                : "Failed to load cart."
+            );
           }
         } finally {
           if (!cancelled) {
-            setIsInitializing(
-              false
-            );
+            setLoading(false);
           }
         }
       };
 
-    initializeCart();
+    loadCart();
 
     return () => {
       cancelled = true;
     };
-  }, [
-    isLoaded,
-    isSignedIn,
-    getToken,
-    loadLocalCart,
-  ]);
+  }, []);
 
   /* ==========================================================
      ADD TO CART
@@ -767,273 +582,125 @@ export function CartProvider({
   const addToCart =
     useCallback(
       async (
-        product: any,
+        product: CartProduct,
         selections: Record<
           string,
           string
         > = {},
         quantity = 1
-      ) => {
-        if (!product?._id) {
-          throw new Error(
-            "Invalid product."
-          );
-        }
-
-        if (
-          !Number.isInteger(
-            quantity
-          ) ||
-          quantity < 1
-        ) {
-          throw new Error(
-            "Invalid quantity."
-          );
-        }
-
-        setIsUpdating(
-          true
-        );
-
+      ): Promise<boolean> => {
         try {
-          const productId =
-            String(
-              product._id
-            );
+          setUpdating(true);
+          setError(null);
 
-          const normalizedSelections =
+          if (
+            !product?._id
+          ) {
+            throw new Error(
+              "Product information is missing."
+            );
+          }
+
+          const safeQuantity =
+            Number.isInteger(
+              quantity
+            ) &&
+            quantity > 0
+              ? quantity
+              : 1;
+
+          const cleanSelections =
             Object.fromEntries(
               Object.entries(
-                selections
+                selections || {}
               )
                 .map(
                   ([
                     key,
                     value,
                   ]) => [
-                    normalizeValue(
-                      key
-                    ),
-                    normalizeValue(
-                      value
-                    ),
+                    String(key).trim(),
+                    String(
+                      value ?? ""
+                    ).trim(),
                   ]
                 )
                 .filter(
-                  ([
-                    key,
-                    value,
-                  ]) =>
-                    key &&
-                    value
+                  ([key, value]) =>
+                    Boolean(key) &&
+                    Boolean(value)
                 )
             );
 
-          /* ================================================
-             AUTHENTICATED
-          ================================================ */
+          /*
+           * IMPORTANT:
+           *
+           * Do NOT send the frontend
+           * price to the backend.
+           *
+           * Backend calculates the
+           * trusted price from Product.
+           */
 
-          if (isSignedIn) {
-            const token =
-              await getToken();
+          const payload = {
+            productId:
+              String(
+                product._id
+              ),
 
-            if (!token) {
-              throw new Error(
-                "Authentication token unavailable."
-              );
-            }
+            quantity:
+              safeQuantity,
 
-            const response =
-              await fetch(
-                `${API_URL}/api/cart/items`,
-                {
-                  method:
-                    "POST",
+            selections:
+              cleanSelections,
+          };
 
-                  headers: {
-                    "Content-Type":
-                      "application/json",
+          console.log(
+            "ADD TO CART REQUEST:",
+            payload
+          );
 
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
+          const data =
+            await apiRequest<any>(
+              "/api/cart/items",
+              {
+                method:
+                  "POST",
 
-                  body:
-                    JSON.stringify(
-                      {
-                        productId,
-
-                        quantity,
-
-                        selections:
-                          normalizedSelections,
-                      }
-                    ),
-                }
-              );
-
-            const data =
-              await response
-                .json()
-                .catch(
-                  () => null
-                );
-
-            if (
-              !response.ok ||
-              !data?.success
-            ) {
-              throw new Error(
-                data?.message ||
-                  "Failed to add item to cart."
-              );
-            }
-
-            setItems(
-              normalizeServerItems(
-                data?.cart?.items
-              )
-            );
-
-            setServerMessages(
-              Array.isArray(
-                data?.messages
-              )
-                ? data.messages
-                : []
-            );
-
-            return;
-          }
-
-          /* ================================================
-             GUEST
-          ================================================ */
-
-          setItems(
-            (
-              previousItems
-            ) => {
-              const itemKey =
-                createItemKey(
-                  productId,
-                  normalizedSelections
-                );
-
-              const existingIndex =
-                previousItems.findIndex(
-                  (item) =>
-                    item.itemKey ===
-                    itemKey
-                );
-
-              let nextItems:
-                CartItem[];
-
-              if (
-                existingIndex !==
-                -1
-              ) {
-                nextItems = [
-                  ...previousItems,
-                ];
-
-                const existing =
-                  nextItems[
-                    existingIndex
-                  ];
-
-                const newQuantity =
-                  existing.quantity +
-                  quantity;
-
-                const units =
-                  Array.isArray(
-                    existing.printUnits
-                  )
-                    ? [
-                        ...existing.printUnits,
-                      ]
-                    : [];
-
-                while (
-                  units.length <
-                  newQuantity
-                ) {
-                  units.push({
-                    unitId:
-                      generateUnitId(),
-
-                    images: [],
-                  });
-                }
-
-                nextItems[
-                  existingIndex
-                ] = {
-                  ...existing,
-
-                  quantity:
-                    newQuantity,
-
-                  printUnits:
-                    units,
-                };
-              } else {
-                nextItems = [
-                  ...previousItems,
-
-                  {
-                    productId,
-
-                    itemKey,
-
-                    name:
-                      product.name ||
-                      "Product",
-
-                    image:
-                      product
-                        .images?.[0] ||
-                      "",
-
-                    price:
-                      Number(
-                        product.price ??
-                          0
-                      ),
-
-                    quantity,
-
-                    selections:
-                      normalizedSelections,
-
-                    printUnits:
-                      createEmptyPrintUnits(
-                        quantity
-                      ),
-                  },
-                ];
+                body:
+                  JSON.stringify(
+                    payload
+                  ),
               }
+            );
 
-              saveLocalCart(
-                nextItems
-              );
-
-              return nextItems;
-            }
+          setCart(
+            normalizeCart(data)
           );
+
+          return true;
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to add item to cart.";
+
+          setError(message);
+
+          console.error(
+            "Failed to add product to cart:",
+            message
+          );
+
+          return false;
         } finally {
-          setIsUpdating(
-            false
-          );
+          setUpdating(false);
         }
       },
-      [
-        isSignedIn,
-        getToken,
-        saveLocalCart,
-      ]
+      []
     );
 
   /* ==========================================================
@@ -1043,182 +710,262 @@ export function CartProvider({
   const updateQuantity =
     useCallback(
       async (
-        itemIdOrKey: string,
+        itemId: string,
         quantity: number
-      ) => {
+      ): Promise<boolean> => {
         if (
+          !itemId ||
           !Number.isInteger(
             quantity
           ) ||
           quantity < 1
         ) {
-          return;
+          return false;
         }
-
-        setIsUpdating(
-          true
-        );
 
         try {
-          /* ================================================
-             AUTHENTICATED
-          ================================================ */
+          setUpdating(true);
+          setError(null);
 
-          if (isSignedIn) {
-            const token =
-              await getToken();
+          const data =
+            await apiRequest<any>(
+              `/api/cart/items/${encodeURIComponent(
+                itemId
+              )}`,
+              {
+                method:
+                  "PATCH",
 
-            if (!token) {
-              throw new Error(
-                "Authentication token unavailable."
-              );
-            }
-
-            const response =
-              await fetch(
-                `${API_URL}/api/cart/items/${encodeURIComponent(
-                  itemIdOrKey
-                )}`,
-                {
-                  method:
-                    "PATCH",
-
-                  headers: {
-                    "Content-Type":
-                      "application/json",
-
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
-
-                  body:
-                    JSON.stringify(
-                      {
-                        quantity,
-                      }
-                    ),
-                }
-              );
-
-            const data =
-              await response
-                .json()
-                .catch(
-                  () => null
-                );
-
-            if (
-              !response.ok ||
-              !data?.success
-            ) {
-              throw new Error(
-                data?.message ||
-                  "Failed to update quantity."
-              );
-            }
-
-            setItems(
-              normalizeServerItems(
-                data?.cart?.items
-              )
+                body:
+                  JSON.stringify({
+                    quantity,
+                  }),
+              }
             );
 
-            return;
-          }
-
-          /* ================================================
-             GUEST
-          ================================================ */
-
-          setItems(
-            (
-              previousItems
-            ) => {
-              const nextItems =
-                previousItems.map(
-                  (item) => {
-                    if (
-                      item.itemKey !==
-                      itemIdOrKey
-                    ) {
-                      return item;
-                    }
-
-                    const units =
-                      Array.isArray(
-                        item.printUnits
-                      )
-                        ? [
-                            ...item.printUnits,
-                          ]
-                        : [];
-
-                    /*
-                     * Increasing quantity:
-                     * create NEW empty
-                     * physical product units.
-                     */
-                    while (
-                      units.length <
-                      quantity
-                    ) {
-                      units.push({
-                        unitId:
-                          generateUnitId(),
-
-                        images: [],
-                      });
-                    }
-
-                    /*
-                     * Decreasing quantity:
-                     * remove units from
-                     * the end.
-                     *
-                     * Earlier images remain.
-                     */
-                    const finalUnits =
-                      units.slice(
-                        0,
-                        quantity
-                      );
-
-                    return {
-                      ...item,
-
-                      quantity,
-
-                      printUnits:
-                        finalUnits,
-                    };
-                  }
-                );
-
-              saveLocalCart(
-                nextItems
-              );
-
-              return nextItems;
-            }
-          );
-        } catch (error) {
-          console.error(
-            "Update quantity error:",
-            error
+          setCart(
+            normalizeCart(data)
           );
 
-          throw error;
+          return true;
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to update quantity.";
+
+          setError(message);
+
+          return false;
         } finally {
-          setIsUpdating(
-            false
-          );
+          setUpdating(false);
         }
       },
-      [
-        isSignedIn,
-        getToken,
-        saveLocalCart,
-      ]
+      []
+    );
+
+  /* ==========================================================
+     REMOVE ITEM
+  ========================================================== */
+
+  const removeItem =
+    useCallback(
+      async (
+        itemId: string
+      ): Promise<boolean> => {
+        if (!itemId) {
+          return false;
+        }
+
+        try {
+          setUpdating(true);
+          setError(null);
+
+          const data =
+            await apiRequest<any>(
+              `/api/cart/items/${encodeURIComponent(
+                itemId
+              )}`,
+              {
+                method:
+                  "DELETE",
+              }
+            );
+
+          setCart(
+            normalizeCart(data)
+          );
+
+          return true;
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to remove item.";
+
+          setError(message);
+
+          return false;
+        } finally {
+          setUpdating(false);
+        }
+      },
+      []
+    );
+
+  /* ==========================================================
+     CLEAR CART
+  ========================================================== */
+
+  const clearCart =
+    useCallback(
+      async (): Promise<boolean> => {
+        try {
+          setUpdating(true);
+          setError(null);
+
+          const data =
+            await apiRequest<any>(
+              "/api/cart",
+              {
+                method:
+                  "DELETE",
+              }
+            );
+
+          setCart(
+            normalizeCart(data)
+          );
+
+          return true;
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to clear cart.";
+
+          setError(message);
+
+          return false;
+        } finally {
+          setUpdating(false);
+        }
+      },
+      []
+    );
+
+  /* ==========================================================
+     SAVE PRINT CUSTOMIZATION
+  ========================================================== */
+
+  const savePrintCustomization =
+    useCallback(
+      async (
+        itemId: string,
+        printUnits: PrintUnit[]
+      ): Promise<boolean> => {
+        try {
+          setUpdating(true);
+          setError(null);
+
+          const cleanedUnits =
+            Array.isArray(
+              printUnits
+            )
+              ? printUnits.map(
+                  (unit) => ({
+                    unitId:
+                      String(
+                        unit?.unitId ||
+                          ""
+                      ),
+
+                    images:
+                      Array.isArray(
+                        unit?.images
+                      )
+                        ? unit.images
+                            .slice(
+                              0,
+                              6
+                            )
+                            .filter(
+                              (
+                                image
+                              ) =>
+                                Boolean(
+                                  image?.url
+                                ) &&
+                                Boolean(
+                                  image?.publicId
+                                )
+                            )
+                            .map(
+                              (
+                                image
+                              ) => ({
+                                url: String(
+                                  image.url
+                                ),
+                                publicId:
+                                  String(
+                                    image.publicId
+                                  ),
+                              })
+                            )
+                        : [],
+                  })
+                )
+              : [];
+
+          const data =
+            await apiRequest<any>(
+              `/api/cart/items/${encodeURIComponent(
+                itemId
+              )}/print-customization`,
+              {
+                method:
+                  "PATCH",
+
+                body:
+                  JSON.stringify({
+                    printUnits:
+                      cleanedUnits,
+                  }),
+              }
+            );
+
+          setCart(
+            normalizeCart(data)
+          );
+
+          return true;
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to save print customization.";
+
+          setError(message);
+
+          return false;
+        } finally {
+          setUpdating(false);
+        }
+      },
+      []
     );
 
   /* ==========================================================
@@ -1229,706 +976,155 @@ export function CartProvider({
     useCallback(
       async (
         file: File
-      ): Promise<PrintImage> => {
-        if (!file) {
-          throw new Error(
-            "Please select an image."
-          );
-        }
-
-        /*
-         * Only image files.
-         */
-        if (
-          !file.type.startsWith(
-            "image/"
-          )
-        ) {
-          throw new Error(
-            "Only image files are allowed."
-          );
-        }
-
-        /*
-         * Frontend safety limit.
-         *
-         * Backend multer has its own
-         * 5MB limit, so keep this at
-         * 5MB too.
-         */
-        if (
-          file.size >
-          5 * 1024 * 1024
-        ) {
-          throw new Error(
-            "Image must be smaller than 5MB."
-          );
-        }
-
-        if (!isSignedIn) {
-          throw new Error(
-            "Please sign in before uploading print images."
-          );
-        }
-
-        const token =
-          await getToken();
-
-        if (!token) {
-          throw new Error(
-            "Authentication token unavailable."
-          );
-        }
-
-        const formData =
-          new FormData();
-
-        formData.append(
-          "image",
-          file
-        );
-
-        /*
-         * IMPORTANT
-         *
-         * Correct backend endpoint:
-         *
-         * POST /api/cart/print-image
-         *
-         * NOT:
-         *
-         * /api/upload/cart-image
-         */
-        const response =
-          await fetch(
-            `${API_URL}/api/cart/print-image`,
-            {
-              method:
-                "POST",
-
-              headers: {
-                Authorization:
-                  `Bearer ${token}`,
-              },
-
-              body:
-                formData,
-            }
-          );
-
-        const data =
-          await response
-            .json()
-            .catch(
-              () => null
-            );
-
-        if (
-          !response.ok ||
-          !data?.success ||
-          !data?.image?.url ||
-          !data?.image?.publicId
-        ) {
-          throw new Error(
-            data?.message ||
-              "Failed to upload print image."
-          );
-        }
-
-        return {
-          url:
-            data.image.url,
-
-          publicId:
-            data.image.publicId,
-        };
-      },
-      [
-        isSignedIn,
-        getToken,
-      ]
-    );
-
-  /* ==========================================================
-     SAVE PRINT CUSTOMIZATION
-  ========================================================== */
-
-  const savePrintCustomization =
-    useCallback(
-      async (
-        itemIdOrKey: string,
-        printUnits: PrintUnit[]
-      ) => {
-        /*
-         * Find cart item.
-         */
-        const item =
-          items.find(
-            (cartItem) =>
-              cartItem._id ===
-                itemIdOrKey ||
-              cartItem.itemKey ===
-                itemIdOrKey
-          );
-
-        if (!item) {
-          throw new Error(
-            "Cart item not found."
-          );
-        }
-
-        /*
-         * Exactly one unit per
-         * physical product.
-         */
-        if (
-          printUnits.length !==
-          item.quantity
-        ) {
-          throw new Error(
-            `This product requires ${item.quantity} physical product units.`
-          );
-        }
-
-        /*
-         * Validate every unit.
-         */
-        const normalizedUnits =
-          printUnits.map(
-            (
-              unit,
-              index
-            ) => {
-              const images =
-                Array.isArray(
-                  unit?.images
-                )
-                  ? unit.images
-                  : [];
-
-              if (
-                images.length <
-                1
-              ) {
-                throw new Error(
-                  `Product ${
-                    index + 1
-                  } requires at least 1 image.`
-                );
-              }
-
-              if (
-                images.length >
-                MAX_PRINT_IMAGES
-              ) {
-                throw new Error(
-                  `Product ${
-                    index + 1
-                  } can have maximum 3 images.`
-                );
-              }
-
-              const validImages =
-                images
-                  .map(
-                    (
-                      image
-                    ) =>
-                      normalizePrintImage(
-                        image
-                      )
-                  )
-                  .filter(
-                    (
-                      image
-                    ): image is PrintImage =>
-                      Boolean(
-                        image
-                      )
-                  );
-
-              if (
-                validImages.length <
-                1
-              ) {
-                throw new Error(
-                  `Product ${
-                    index + 1
-                  } contains no valid image.`
-                );
-              }
-
-              return {
-                unitId:
-                  normalizeValue(
-                    unit?.unitId
-                  ) ||
-                  generateUnitId(),
-
-                images:
-                  validImages.slice(
-                    0,
-                    MAX_PRINT_IMAGES
-                  ),
-              };
-            }
-          );
-
-        /* ================================================
-           GUEST
-        ================================================ */
-
-        if (!isSignedIn) {
-          setItems(
-            (
-              previousItems
-            ) => {
-              const nextItems =
-                previousItems.map(
-                  (cartItem) =>
-                    cartItem.itemKey ===
-                    itemIdOrKey
-                      ? {
-                          ...cartItem,
-
-                          printUnits:
-                            normalizedUnits,
-                        }
-                      : cartItem
-                );
-
-              saveLocalCart(
-                nextItems
-              );
-
-              return nextItems;
-            }
-          );
-
-          return;
-        }
-
-        /* ================================================
-           AUTHENTICATED
-        ================================================ */
-
-        const token =
-          await getToken();
-
-        if (!token) {
-          throw new Error(
-            "Authentication token unavailable."
-          );
-        }
-
-        /*
-         * Correct backend endpoint:
-         *
-         * PATCH
-         * /api/cart/items/:itemId/print-customization
-         */
-        const response =
-          await fetch(
-            `${API_URL}/api/cart/items/${encodeURIComponent(
-              itemIdOrKey
-            )}/print-customization`,
-            {
-              method:
-                "PATCH",
-
-              headers: {
-                "Content-Type":
-                  "application/json",
-
-                Authorization:
-                  `Bearer ${token}`,
-              },
-
-              body:
-                JSON.stringify(
-                  {
-                    printUnits:
-                      normalizedUnits,
-                  }
-                ),
-            }
-          );
-
-        const data =
-          await response
-            .json()
-            .catch(
-              () => null
-            );
-
-        if (
-          !response.ok ||
-          !data?.success
-        ) {
-          throw new Error(
-            data?.message ||
-              "Failed to save print images."
-          );
-        }
-
-        setItems(
-          normalizeServerItems(
-            data?.cart?.items
-          )
-        );
-
-        setServerMessages(
-          Array.isArray(
-            data?.messages
-          )
-            ? data.messages
-            : []
-        );
-      },
-      [
-        items,
-        isSignedIn,
-        getToken,
-        saveLocalCart,
-      ]
-    );
-
-  /* ==========================================================
-     REMOVE ITEM
-  ========================================================== */
-
-  const removeFromCart =
-    useCallback(
-      async (
-        itemIdOrKey: string
-      ) => {
-        setIsUpdating(
-          true
-        );
-
+      ): Promise<PrintImage | null> => {
         try {
-          /* ================================================
-             AUTHENTICATED
-          ================================================ */
+          setError(null);
 
-          if (isSignedIn) {
-            const token =
-              await getToken();
-
-            if (!token) {
-              throw new Error(
-                "Authentication token unavailable."
-              );
-            }
-
-            const response =
-              await fetch(
-                `${API_URL}/api/cart/items/${encodeURIComponent(
-                  itemIdOrKey
-                )}`,
-                {
-                  method:
-                    "DELETE",
-
-                  headers: {
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
-                }
-              );
-
-            const data =
-              await response
-                .json()
-                .catch(
-                  () => null
-                );
-
-            if (
-              !response.ok ||
-              !data?.success
-            ) {
-              throw new Error(
-                data?.message ||
-                  "Failed to remove item."
-              );
-            }
-
-            setItems(
-              normalizeServerItems(
-                data?.cart?.items
-              )
-            );
-
-            return;
-          }
-
-          /* ================================================
-             GUEST
-          ================================================ */
-
-          setItems(
-            (
-              previousItems
-            ) => {
-              const nextItems =
-                previousItems.filter(
-                  (item) =>
-                    item.itemKey !==
-                    itemIdOrKey
-                );
-
-              saveLocalCart(
-                nextItems
-              );
-
-              return nextItems;
-            }
-          );
-        } catch (error) {
-          console.error(
-            "Remove cart item error:",
-            error
-          );
-
-          throw error;
-        } finally {
-          setIsUpdating(
-            false
-          );
-        }
-      },
-      [
-        isSignedIn,
-        getToken,
-        saveLocalCart,
-      ]
-    );
-
-  /* ==========================================================
-     CLEAR CART
-  ========================================================== */
-
-  const clearCart =
-    useCallback(
-      async () => {
-        setIsUpdating(
-          true
-        );
-
-        try {
-          if (isSignedIn) {
-            const token =
-              await getToken();
-
-            if (!token) {
-              throw new Error(
-                "Authentication token unavailable."
-              );
-            }
-
-            const response =
-              await fetch(
-                `${API_URL}/api/cart`,
-                {
-                  method:
-                    "DELETE",
-
-                  headers: {
-                    Authorization:
-                      `Bearer ${token}`,
-                  },
-                }
-              );
-
-            const data =
-              await response
-                .json()
-                .catch(
-                  () => null
-                );
-
-            if (
-              !response.ok ||
-              !data?.success
-            ) {
-              throw new Error(
-                data?.message ||
-                  "Failed to clear cart."
-              );
-            }
-          }
-
-          setItems([]);
-
-          localStorage.removeItem(
-            LOCAL_STORAGE_KEY
-          );
-        } catch (error) {
-          console.error(
-            "Clear cart error:",
-            error
-          );
-
-          throw error;
-        } finally {
-          setIsUpdating(
-            false
-          );
-        }
-      },
-      [
-        isSignedIn,
-        getToken,
-      ]
-    );
-
-  /* ==========================================================
-     CLEAR SERVER MESSAGES
-  ========================================================== */
-
-  const clearServerMessages =
-    useCallback(() => {
-      setServerMessages(
-        []
-      );
-    }, []);
-
-  /* ==========================================================
-     ITEM COUNT
-  ========================================================== */
-
-  const itemCount =
-    useMemo(
-      () =>
-        items.reduce(
-          (
-            total,
-            item
-          ) =>
-            total +
-            Number(
-              item.quantity
-            ),
-          0
-        ),
-      [items]
-    );
-
-  /* ==========================================================
-     SUBTOTAL
-  ========================================================== */
-
-  const subtotal =
-    useMemo(
-      () =>
-        items.reduce(
-          (
-            total,
-            item
-          ) =>
-            total +
-            Number(
-              item.price
-            ) *
-              Number(
-                item.quantity
-              ),
-          0
-        ),
-      [items]
-    );
-
-  /* ==========================================================
-     PRINT READINESS
-  ========================================================== */
-
-  const isCartPrintReady =
-    useMemo(() => {
-      /*
-       * Empty cart is not ready.
-       */
-      if (
-        items.length ===
-        0
-      ) {
-        return false;
-      }
-
-      /*
-       * Every cart line must have
-       * exactly quantity physical
-       * units.
-       *
-       * Every unit must have
-       * 1–3 images.
-       */
-      return items.every(
-        (item) => {
           if (
-            item.printUnits
-              .length !==
-            item.quantity
+            !file ||
+            !(file instanceof File)
           ) {
-            return false;
+            throw new Error(
+              "Please select an image."
+            );
           }
 
-          return item.printUnits.every(
-            (unit) => {
-              const imageCount =
-                Array.isArray(
-                  unit.images
-                )
-                  ? unit.images.length
-                  : 0;
+          if (
+            !file.type.startsWith(
+              "image/"
+            )
+          ) {
+            throw new Error(
+              "Please upload an image file."
+            );
+          }
 
-              return (
-                imageCount >=
-                  1 &&
-                imageCount <=
-                  MAX_PRINT_IMAGES
-              );
-            }
+          if (
+            file.size >
+            10 *
+              1024 *
+              1024
+          ) {
+            throw new Error(
+              "Image must be 10MB or smaller."
+            );
+          }
+
+          const formData =
+            new FormData();
+
+          formData.append(
+            "image",
+            file
           );
+
+          const data =
+            await apiRequest<any>(
+              "/api/cart/print-image",
+              {
+                method:
+                  "POST",
+
+                body:
+                  formData,
+              }
+            );
+
+          if (
+            !data?.image?.url ||
+            !data?.image?.publicId
+          ) {
+            throw new Error(
+              "Invalid image response from server."
+            );
+          }
+
+          return {
+            url: String(
+              data.image.url
+            ),
+
+            publicId: String(
+              data.image.publicId
+            ),
+          };
+        } catch (
+          requestError
+        ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to upload image.";
+
+          setError(message);
+
+          return null;
         }
-      );
-    }, [items]);
+      },
+      []
+    );
 
   /* ==========================================================
-     PROVIDER
+     CONTEXT VALUE
   ========================================================== */
 
-  return (
-    <CartContext.Provider
-      value={{
-        items,
+  const value =
+    useMemo<CartContextType>(
+      () => ({
+        items:
+          cart.items,
 
-        itemCount,
+        subtotal:
+          cart.subtotal,
 
-        subtotal,
+        shippingCharge:
+          cart.shippingCharge,
 
-        isInitializing,
+        total:
+          cart.total,
 
-        isUpdating,
+        itemCount:
+          cart.itemCount,
 
-        serverMessages,
+        loading,
+
+        updating,
+
+        error,
+
+        refreshCart,
 
         addToCart,
 
         updateQuantity,
 
-        removeFromCart,
+        removeItem,
 
         clearCart,
 
-        uploadPrintImage,
-
         savePrintCustomization,
 
-        isCartPrintReady,
+        uploadPrintImage,
+      }),
+      [
+        cart,
+        loading,
+        updating,
+        error,
+        refreshCart,
+        addToCart,
+        updateQuantity,
+        removeItem,
+        clearCart,
+        savePrintCustomization,
+        uploadPrintImage,
+      ]
+    );
 
-        clearServerMessages,
-      }}
+  return (
+    <CartContext.Provider
+      value={value}
     >
       {children}
     </CartContext.Provider>
@@ -1947,7 +1143,7 @@ export function useCart() {
 
   if (!context) {
     throw new Error(
-      "useCart must be used within CartProvider"
+      "useCart must be used inside CartProvider."
     );
   }
 

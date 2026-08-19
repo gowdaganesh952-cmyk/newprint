@@ -15,10 +15,13 @@ import {
   removeItem,
   clearCart,
   mergeCart,
-
   uploadPrintImage,
   updatePrintCustomization,
 } from "../controllers/cartController.js";
+
+/* ============================================================
+   ROUTER
+============================================================ */
 
 const router =
   express.Router();
@@ -29,7 +32,7 @@ const router =
 
 /*
  * Every cart endpoint requires
- * the user to be authenticated.
+ * an authenticated Clerk user.
  */
 
 router.use(
@@ -37,18 +40,9 @@ router.use(
 );
 
 /* ============================================================
-   CART
+   GET /api/cart
+   DELETE /api/cart
 ============================================================ */
-
-/*
- * GET /api/cart
- *
- * Get current user's cart.
- *
- * DELETE /api/cart
- *
- * Clear current user's cart.
- */
 
 router
   .route("/")
@@ -56,42 +50,62 @@ router
   .delete(clearCart);
 
 /* ============================================================
-   ADD CART ITEM
+   POST /api/cart/items
 ============================================================ */
 
 /*
- * POST /api/cart/items
+ * Add a product / variant
+ * to the authenticated user's cart.
+ *
+ * Body example:
+ *
+ * {
+ *   "productId": "...",
+ *   "quantity": 2,
+ *   "selections": {
+ *     "Size": "M",
+ *     "Color": "Black"
+ *   }
+ * }
  */
 
-router
-  .route("/items")
-  .post(addItem);
+router.post(
+  "/items",
+  addItem
+);
 
 /* ============================================================
-   UPDATE / REMOVE CART ITEM
+   PATCH /api/cart/items/:itemId
+   DELETE /api/cart/items/:itemId
 ============================================================ */
 
 /*
- * PATCH /api/cart/items/:itemId
- *
+ * PATCH
  * Update quantity.
  *
- * DELETE /api/cart/items/:itemId
- *
- * Remove item.
+ * DELETE
+ * Remove cart item.
  */
 
 router
-  .route("/items/:itemId")
-  .patch(updateItemQuantity)
-  .delete(removeItem);
+  .route(
+    "/items/:itemId"
+  )
+  .patch(
+    updateItemQuantity
+  )
+  .delete(
+    removeItem
+  );
 
 /* ============================================================
-   MERGE GUEST CART
+   POST /api/cart/merge
 ============================================================ */
 
 /*
- * POST /api/cart/merge
+ * Merge the frontend guest cart
+ * into the authenticated user's
+ * server-side cart.
  */
 
 router.post(
@@ -100,15 +114,25 @@ router.post(
 );
 
 /* ============================================================
-   UPLOAD PRINT IMAGE
+   POST /api/cart/print-image
 ============================================================ */
 
 /*
- * POST /api/cart/print-image
+ * Upload ONE customer print image.
  *
- * Upload ONE image.
+ * IMPORTANT:
  *
- * FormData:
+ * upload.single("image") uses the
+ * updated multer middleware.
+ *
+ * Current upload limit:
+ *
+ *   10 MB per image
+ *
+ * The controller then uploads
+ * the image to Cloudinary.
+ *
+ * Example FormData:
  *
  * image = File
  *
@@ -122,54 +146,83 @@ router.post(
  *   }
  * }
  *
- * IMPORTANT:
+ * This endpoint does NOT decide
+ * which physical product receives
+ * the image.
  *
- * This only uploads the image to
- * Cloudinary.
- *
- * It does NOT decide which
- * product/unit receives the image.
- *
- * The frontend handles that.
+ * The frontend associates the
+ * returned image with a printUnit.
  */
 
 router.post(
   "/print-image",
 
-  upload.single("image"),
+  upload.single(
+    "image"
+  ),
 
   uploadPrintImage
 );
 
 /* ============================================================
-   SAVE PRINT CUSTOMIZATION
+   PATCH /api/cart/items/:itemId/print-customization
 ============================================================ */
 
 /*
- * PATCH
- * /api/cart/items/:itemId/print-customization
+ * Save print images for every
+ * physical product in the cart item.
  *
- * Body:
+ * Body example:
  *
  * {
- *   printUnits: [
+ *   "printUnits": [
  *     {
- *       unitId: "...",
- *       images: [
+ *       "unitId": "unit_1",
+ *       "images": [
  *         {
- *           url: "...",
- *           publicId: "..."
+ *           "url": "...",
+ *           "publicId": "..."
+ *         }
+ *       ]
+ *     },
+ *
+ *     {
+ *       "unitId": "unit_2",
+ *       "images": [
+ *         {
+ *           "url": "...",
+ *           "publicId": "..."
  *         }
  *       ]
  *     }
  *   ]
  * }
  *
- * Rules:
+ * Rules enforced by controller:
  *
- * - printUnits count must equal quantity
- * - every product needs minimum 1 image
- * - every product can have maximum 3 images
+ * quantity = number of printUnits
+ *
+ * Every physical product:
+ *
+ *   minimum 1 image
+ *   maximum 6 images
+ *
+ * Example:
+ *
+ * quantity = 2
+ *
+ * printUnits = 2
+ *
+ * Product 1 = 1–6 images
+ * Product 2 = 1–6 images
+ *
+ * IMPORTANT:
+ *
+ * The customer never sends or
+ * controls product weight here.
+ *
+ * Shipping is calculated on the
+ * backend from the Product model.
  */
 
 router.patch(

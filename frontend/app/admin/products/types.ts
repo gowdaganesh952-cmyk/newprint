@@ -18,10 +18,7 @@ export type ProductPricingType =
 
 /**
  * One price + inventory combination
- * for a product.
- *
- * originalPrice = MRP / price before discount
- * price         = current selling price
+ * for a product variant.
  */
 export interface ProductVariant {
   _id?: string;
@@ -33,10 +30,6 @@ export interface ProductVariant {
 
   /**
    * Original / MRP price.
-   *
-   * Example:
-   * originalPrice: 1999
-   * price: 486
    */
   originalPrice?: number;
 
@@ -45,6 +38,9 @@ export interface ProductVariant {
    */
   price: number;
 
+  /**
+   * SKU.
+   */
   sku?: string;
 
   /**
@@ -75,23 +71,31 @@ export interface Product {
   description?: string;
 
   /**
+   * Internal shipping weight in grams.
+   *
+   * Example:
+   * 100  = 100 grams
+   * 250  = 250 grams
+   * 500  = 500 grams
+   *
+   * This value is used only for internal
+   * shipping calculation.
+   *
+   * Do not display this value to customers.
+   */
+  weight?: number;
+
+  /**
    * Original / MRP price.
    *
    * Used only for fixed-price products.
-   *
-   * Example:
-   * originalPrice: 1999
-   * price: 486
-   *
-   * Website can display:
-   * ↓76% ₹1,999 ₹486
    */
   originalPrice?: number;
 
   /**
    * Current selling price.
    *
-   * Used for fixed pricing.
+   * Used for fixed-price products.
    */
   price?: number;
 

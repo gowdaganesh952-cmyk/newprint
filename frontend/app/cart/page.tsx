@@ -14,16 +14,20 @@ import { useAuth } from "@clerk/nextjs";
 
 import {
   useCart,
-  PrintUnit,
+  type CartItem,
+  type PrintImage,
+  type PrintUnit,
 } from "@/app/components/cart/CartProvider";
 
 import Navbar from "@/app/components/Navbar";
 
-const MAX_PRINT_IMAGES = 3;
-const MAX_UPLOAD_SIZE = 5 * 1024 * 1024;
+/* ============================================================
+   CONFIGURATION
+============================================================ */
 
-const FALLBACK_IMAGE =
-  "/images/product-placeholder.jpg";
+const MAX_PRINT_IMAGES = 6;
+const MAX_UPLOAD_SIZE =
+  10 * 1024 * 1024;
 
 /* ============================================================
    ICONS
@@ -37,8 +41,6 @@ function CartIcon({
   return (
     <svg
       className={className}
-      width="30"
-      height="30"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -47,8 +49,16 @@ function CartIcon({
       strokeLinejoin="round"
       aria-hidden="true"
     >
-      <circle cx="8" cy="21" r="1" />
-      <circle cx="19" cy="21" r="1" />
+      <circle
+        cx="8"
+        cy="21"
+        r="1"
+      />
+      <circle
+        cx="19"
+        cy="21"
+        r="1"
+      />
       <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
     </svg>
   );
@@ -62,8 +72,6 @@ function TrashIcon({
   return (
     <svg
       className={className}
-      width="17"
-      height="17"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -87,8 +95,6 @@ function ArrowRightIcon({
   return (
     <svg
       className={className}
-      width="18"
-      height="18"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -130,8 +136,6 @@ function UploadIcon({
   return (
     <svg
       className={className}
-      width="19"
-      height="19"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -155,8 +159,6 @@ function CheckIcon({
   return (
     <svg
       className={className}
-      width="16"
-      height="16"
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -243,14 +245,71 @@ function createUnitId(): string {
 }
 
 function getItemId(
-  item: {
-    _id?: string;
-    itemKey: string;
-  }
+  item: CartItem
 ): string {
   return (
     item._id ||
     item.itemKey
+  );
+}
+
+/* ============================================================
+   PRODUCT IMAGE
+============================================================ */
+
+/*
+ * IMPORTANT:
+ *
+ * We do NOT use:
+ *
+ * /images/product-placeholder.jpg
+ *
+ * because your console shows that
+ * file does not exist.
+ */
+
+function ProductImage({
+  src,
+  alt,
+}: {
+  src?: string;
+  alt: string;
+}) {
+  if (!src) {
+    return (
+      <div
+        className="
+          flex
+          h-full
+          w-full
+          items-center
+          justify-center
+          bg-[#F5F4F0]
+          text-[#B9954F]
+        "
+        aria-label={alt}
+      >
+        <CartIcon className="h-8 w-8 opacity-40" />
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      sizes="
+        (max-width: 639px) 86px,
+        112px
+      "
+      className="
+        object-cover
+        transition-transform
+        duration-200
+        md:hover:scale-[1.02]
+      "
+    />
   );
 }
 
@@ -338,7 +397,8 @@ function PrintUnitCard({
   uploading: boolean;
   disabled: boolean;
 }) {
-  const inputId = `print-upload-${unit.unitId}`;
+  const inputId =
+    `print-upload-${unit.unitId}`;
 
   return (
     <div
@@ -358,7 +418,7 @@ function PrintUnitCard({
           </p>
 
           <p className="mt-0.5 text-[10px] text-[#64748B] sm:text-xs">
-            1–3 images required
+            1–6 images
           </p>
         </div>
 
@@ -382,7 +442,7 @@ function PrintUnitCard({
         </span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
         {unit.images.map(
           (
             image,
@@ -390,17 +450,22 @@ function PrintUnitCard({
           ) => (
             <div
               key={`${image.publicId}-${imageIndex}`}
-              className="relative aspect-square overflow-hidden rounded-[8px] border border-[#DDE2E7] bg-white"
+              className="
+                relative
+                aspect-square
+                overflow-hidden
+                rounded-[8px]
+                border
+                border-[#DDE2E7]
+                bg-white
+              "
             >
               <Image
-                src={
-                  image.url
-                }
+                src={image.url}
                 alt={`Product ${
                   index + 1
                 } print image ${
-                  imageIndex +
-                  1
+                  imageIndex + 1
                 }`}
                 fill
                 sizes="120px"
@@ -446,9 +511,7 @@ function PrintUnitCard({
         {unit.images.length <
           MAX_PRINT_IMAGES && (
           <label
-            htmlFor={
-              inputId
-            }
+            htmlFor={inputId}
             className={`
               flex
               aspect-square
@@ -488,7 +551,7 @@ function PrintUnitCard({
             <input
               id={inputId}
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/gif"
               className="hidden"
               disabled={
                 disabled
@@ -501,9 +564,7 @@ function PrintUnitCard({
                     .files?.[0];
 
                 if (file) {
-                  onUpload(
-                    file
-                  );
+                  onUpload(file);
                 }
 
                 event.target.value =
@@ -532,26 +593,23 @@ export default function CartPage() {
   const {
     items,
     subtotal,
+    shippingCharge,
+    total,
     itemCount,
 
-    isInitializing,
-    isUpdating,
-
-    serverMessages,
+    loading,
+    updating,
+    error,
 
     updateQuantity,
-    removeFromCart,
+    removeItem,
 
     uploadPrintImage,
     savePrintCustomization,
-
-    isCartPrintReady,
-
-    clearServerMessages,
   } = useCart();
 
   /* ==========================================================
-     CUSTOMIZATION STATE
+     STATE
   ========================================================== */
 
   const [
@@ -595,31 +653,33 @@ export default function CartPage() {
   >(null);
 
   /* ==========================================================
-     BODY LOCK WHEN MODAL IS OPEN
+     BODY LOCK
   ========================================================== */
 
   useEffect(() => {
     if (
-      editingItemId
+      !editingItemId
     ) {
-      const previousOverflow =
-        document.body
-          .style.overflow;
-
-      document.body.style.overflow =
-        "hidden";
-
-      return () => {
-        document.body.style.overflow =
-          previousOverflow;
-      };
+      return;
     }
+
+    const previous =
+      document.body.style
+        .overflow;
+
+    document.body.style.overflow =
+      "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previous;
+    };
   }, [
     editingItemId,
   ]);
 
   /* ==========================================================
-     ESCAPE MODAL
+     ESC CLOSE
   ========================================================== */
 
   useEffect(() => {
@@ -664,15 +724,78 @@ export default function CartPage() {
   ]);
 
   /* ==========================================================
+     CHECK PRINT READINESS
+  ========================================================== */
+
+  const isCartPrintReady =
+    useMemo(() => {
+      if (
+        items.length ===
+        0
+      ) {
+        return false;
+      }
+
+      return items.every(
+        (item) => {
+          const quantity =
+            Math.max(
+              1,
+              Number(
+                item.quantity
+              ) || 1
+            );
+
+          if (
+            item.printUnits
+              .length !==
+            quantity
+          ) {
+            return false;
+          }
+
+          return item.printUnits.every(
+            (unit) =>
+              unit.images.length >=
+              1 &&
+              unit.images.length <=
+                MAX_PRINT_IMAGES
+          );
+        }
+      );
+    }, [items]);
+
+  /* ==========================================================
+     TOTAL PHYSICAL PRODUCTS
+  ========================================================== */
+
+  const totalPhysicalProducts =
+    useMemo(
+      () =>
+        items.reduce(
+          (
+            totalCount,
+            item
+          ) =>
+            totalCount +
+            Math.max(
+              0,
+              Number(
+                item.quantity
+              ) || 0
+            ),
+          0
+        ),
+      [items]
+    );
+
+  /* ==========================================================
      START CUSTOMIZATION
   ========================================================== */
 
   const startCustomization =
     useCallback(
-      (item: any) => {
-        const itemId =
-          getItemId(item);
-
+      (item: CartItem) => {
         setActionError(
           null
         );
@@ -689,7 +812,7 @@ export default function CartPage() {
             ) || 1
           );
 
-        const sourceUnits =
+        const existingUnits =
           Array.isArray(
             item.printUnits
           )
@@ -697,27 +820,39 @@ export default function CartPage() {
             : [];
 
         const units: PrintUnit[] =
-          sourceUnits.map(
-            (
-              unit: PrintUnit
-            ) => ({
-              unitId:
-                unit.unitId ||
-                createUnitId(),
+          existingUnits
+            .slice(
+              0,
+              quantity
+            )
+            .map(
+              (
+                unit,
+                index
+              ) => ({
+                unitId:
+                  unit.unitId ||
+                  createUnitId(),
 
-              images:
-                Array.isArray(
-                  unit.images
-                )
-                  ? [
-                      ...unit.images,
-                    ].slice(
-                      0,
-                      MAX_PRINT_IMAGES
-                    )
-                  : [],
-            })
-          );
+                images:
+                  Array.isArray(
+                    unit.images
+                  )
+                    ? unit.images
+                        .slice(
+                          0,
+                          MAX_PRINT_IMAGES
+                        )
+                        .filter(
+                          (
+                            image
+                          ) =>
+                            image?.url &&
+                            image?.publicId
+                        )
+                    : [],
+              })
+            );
 
         while (
           units.length <
@@ -732,14 +867,11 @@ export default function CartPage() {
         }
 
         setDraftUnits(
-          units.slice(
-            0,
-            quantity
-          )
+          units
         );
 
         setEditingItemId(
-          itemId
+          getItemId(item)
         );
       },
       []
@@ -784,10 +916,6 @@ export default function CartPage() {
         unitIndex: number,
         file: File
       ) => {
-        setCustomizationError(
-          null
-        );
-
         const unit =
           draftUnits[
             unitIndex
@@ -797,12 +925,16 @@ export default function CartPage() {
           return;
         }
 
+        setCustomizationError(
+          null
+        );
+
         if (
           unit.images.length >=
           MAX_PRINT_IMAGES
         ) {
           setCustomizationError(
-            "Maximum 3 images are allowed for each product."
+            "Maximum 6 images are allowed for each product."
           );
 
           return;
@@ -825,7 +957,7 @@ export default function CartPage() {
           MAX_UPLOAD_SIZE
         ) {
           setCustomizationError(
-            "Image must be smaller than 5MB."
+            "Image must be 10MB or smaller."
           );
 
           return;
@@ -844,36 +976,41 @@ export default function CartPage() {
               file
             );
 
+          if (
+            !uploaded
+          ) {
+            return;
+          }
+
           setDraftUnits(
             (
-              previousUnits
+              previous
             ) =>
-              previousUnits.map(
+              previous.map(
                 (
-                  currentUnit,
+                  current,
                   index
                 ) => {
                   if (
                     index !==
                     unitIndex
                   ) {
-                    return currentUnit;
+                    return current;
                   }
 
                   if (
-                    currentUnit
-                      .images
+                    current.images
                       .length >=
                     MAX_PRINT_IMAGES
                   ) {
-                    return currentUnit;
+                    return current;
                   }
 
                   return {
-                    ...currentUnit,
+                    ...current,
 
                     images: [
-                      ...currentUnit.images,
+                      ...current.images,
                       uploaded,
                     ],
                   };
@@ -881,17 +1018,17 @@ export default function CartPage() {
               )
           );
         } catch (
-          error
+          uploadError
         ) {
           console.error(
             "Print image upload error:",
-            error
+            uploadError
           );
 
           setCustomizationError(
-            error instanceof
+            uploadError instanceof
               Error
-              ? error.message
+              ? uploadError.message
               : "Failed to upload image."
           );
         } finally {
@@ -907,7 +1044,7 @@ export default function CartPage() {
     );
 
   /* ==========================================================
-     REMOVE DRAFT IMAGE
+     REMOVE IMAGE
   ========================================================== */
 
   const removeDraftImage =
@@ -925,9 +1062,9 @@ export default function CartPage() {
 
         setDraftUnits(
           (
-            previousUnits
+            previous
           ) =>
-            previousUnits.map(
+            previous.map(
               (
                 unit,
                 index
@@ -945,7 +1082,7 @@ export default function CartPage() {
                   images:
                     unit.images.filter(
                       (
-                        _image,
+                        _,
                         currentIndex
                       ) =>
                         currentIndex !==
@@ -973,28 +1110,24 @@ export default function CartPage() {
   const handleSaveCustomization =
     useCallback(
       async () => {
-        setCustomizationError(
-          null
-        );
-
         if (
           !editingItemId
         ) {
           return;
         }
 
-        const currentItem =
+        const item =
           items.find(
-            (item) =>
+            (current) =>
               getItemId(
-                item
+                current
               ) ===
               editingItemId
           );
 
-        if (!currentItem) {
+        if (!item) {
           setCustomizationError(
-            "Cart item not found."
+            "Cart item could not be found."
           );
 
           return;
@@ -1004,7 +1137,7 @@ export default function CartPage() {
           Math.max(
             1,
             Number(
-              currentItem.quantity
+              item.quantity
             ) || 1
           );
 
@@ -1013,54 +1146,29 @@ export default function CartPage() {
           quantity
         ) {
           setCustomizationError(
-            `This product has ${quantity} physical ${
-              quantity ===
-              1
-                ? "product"
-                : "products"
-            }.`
+            "The number of print units does not match the quantity."
           );
 
           return;
         }
 
-        const incompleteIndex =
+        const invalidIndex =
           draftUnits.findIndex(
             (unit) =>
               unit.images.length <
-              1
-          );
-
-        if (
-          incompleteIndex !==
-          -1
-        ) {
-          setCustomizationError(
-            `Product ${
-              incompleteIndex +
-              1
-            } requires at least 1 image.`
-          );
-
-          return;
-        }
-
-        const tooManyIndex =
-          draftUnits.findIndex(
-            (unit) =>
+                1 ||
               unit.images.length >
-              MAX_PRINT_IMAGES
+                MAX_PRINT_IMAGES
           );
 
         if (
-          tooManyIndex !==
+          invalidIndex !==
           -1
         ) {
           setCustomizationError(
             `Product ${
-              tooManyIndex +
-              1
-            } has more than 3 images.`
+              invalidIndex + 1
+            } must have 1–6 images.`
           );
 
           return;
@@ -1071,10 +1179,17 @@ export default function CartPage() {
             true
           );
 
-          await savePrintCustomization(
-            editingItemId,
-            draftUnits
-          );
+          const success =
+            await savePrintCustomization(
+              editingItemId,
+              draftUnits
+            );
+
+          if (
+            !success
+          ) {
+            return;
+          }
 
           setEditingItemId(
             null
@@ -1088,17 +1203,17 @@ export default function CartPage() {
             null
           );
         } catch (
-          error
+          saveError
         ) {
           console.error(
-            "Save print customization error:",
-            error
+            "Save customization error:",
+            saveError
           );
 
           setCustomizationError(
-            error instanceof
+            saveError instanceof
               Error
-              ? error.message
+              ? saveError.message
               : "Failed to save print images."
           );
         } finally {
@@ -1116,36 +1231,7 @@ export default function CartPage() {
     );
 
   /* ==========================================================
-     CHECKOUT
-  ========================================================== */
-
-  const handleCheckoutClick =
-    useCallback(() => {
-      if (
-        !isCartPrintReady ||
-        isUpdating
-      ) {
-        return;
-      }
-
-      if (isSignedIn) {
-        router.push(
-          "/checkout"
-        );
-      } else {
-        router.push(
-          "/sign-in?redirect_url=/checkout"
-        );
-      }
-    }, [
-      isCartPrintReady,
-      isUpdating,
-      isSignedIn,
-      router,
-    ]);
-
-  /* ==========================================================
-     UPDATE QUANTITY
+     QUANTITY
   ========================================================== */
 
   const changeQuantity =
@@ -1156,11 +1242,10 @@ export default function CartPage() {
         nextQuantity: number
       ) => {
         if (
-          nextQuantity <
-            1 ||
+          nextQuantity < 1 ||
           nextQuantity ===
             currentQuantity ||
-          isUpdating
+          updating
         ) {
           return;
         }
@@ -1169,35 +1254,28 @@ export default function CartPage() {
           null
         );
 
-        try {
+        const success =
           await updateQuantity(
             itemId,
             nextQuantity
           );
-        } catch (
-          error
-        ) {
-          console.error(
-            "Quantity update error:",
-            error
-          );
 
+        if (
+          !success
+        ) {
           setActionError(
-            error instanceof
-              Error
-              ? error.message
-              : "Unable to update quantity."
+            "Unable to update quantity. Please try again."
           );
         }
       },
       [
         updateQuantity,
-        isUpdating,
+        updating,
       ]
     );
 
   /* ==========================================================
-     REMOVE
+     REMOVE ITEM
   ========================================================== */
 
   const handleRemove =
@@ -1206,7 +1284,7 @@ export default function CartPage() {
         itemId: string
       ) => {
         if (
-          isUpdating
+          updating
         ) {
           return;
         }
@@ -1215,62 +1293,62 @@ export default function CartPage() {
           null
         );
 
-        try {
-          await removeFromCart(
+        const success =
+          await removeItem(
             itemId
           );
-        } catch (
-          error
-        ) {
-          console.error(
-            "Remove cart item error:",
-            error
-          );
 
+        if (
+          !success
+        ) {
           setActionError(
-            error instanceof
-              Error
-              ? error.message
-              : "Unable to remove item."
+            "Unable to remove this item. Please try again."
           );
         }
       },
       [
-        removeFromCart,
-        isUpdating,
+        removeItem,
+        updating,
       ]
     );
 
   /* ==========================================================
-     SUMMARY DATA
+     CHECKOUT
   ========================================================== */
 
-  const totalPhysicalProducts =
-    useMemo(
-      () =>
-        items.reduce(
-          (
-            total,
-            item
-          ) =>
-            total +
-            Math.max(
-              0,
-              Number(
-                item.quantity
-              ) || 0
-            ),
-          0
-        ),
-      [items]
-    );
+  const handleCheckout =
+    useCallback(() => {
+      if (
+        !isCartPrintReady ||
+        updating
+      ) {
+        return;
+      }
+
+      if (
+        isSignedIn
+      ) {
+        router.push(
+          "/checkout"
+        );
+      } else {
+        router.push(
+          "/sign-in?redirect_url=/checkout"
+        );
+      }
+    }, [
+      isCartPrintReady,
+      updating,
+      isSignedIn,
+      router,
+    ]);
 
   /* ==========================================================
      LOADING
   ========================================================== */
 
   if (
-    isInitializing
+    loading
   ) {
     return (
       <CartSkeleton />
@@ -1348,6 +1426,7 @@ export default function CartPage() {
                   hover:bg-[#FBFAF6]
                 "
               >
+                <ArrowLeftIcon />
                 Continue Shopping
               </Link>
             )}
@@ -1355,42 +1434,14 @@ export default function CartPage() {
         </header>
 
         {/* ==================================================
-            SERVER MESSAGES
+            PROVIDER ERROR
         ================================================== */}
 
-        {serverMessages.length >
-          0 && (
-          <div className="relative mb-5 rounded-[10px] border border-[#E6D6A9] bg-[#FBF7E9] px-4 py-3.5 pr-12 sm:mb-6">
-            <button
-              type="button"
-              onClick={
-                clearServerMessages
-              }
-              aria-label="Close cart updates"
-              className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full text-[#8B6E32] transition-colors duration-150 hover:bg-[#EEEBDD]"
-            >
-              <XIcon />
-            </button>
-
-            <p className="text-xs font-extrabold text-[#8B6E32]">
-              Cart Updates
+        {error && (
+          <div className="mb-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-xs font-semibold leading-5 text-red-600">
+              {error}
             </p>
-
-            <ul className="mt-1.5 space-y-1 text-[11px] leading-5 text-[#8B6E32] sm:text-xs">
-              {serverMessages.map(
-                (
-                  message,
-                  index
-                ) => (
-                  <li
-                    key={`${message}-${index}`}
-                    className="list-inside list-disc"
-                  >
-                    {message}
-                  </li>
-                )
-              )}
-            </ul>
           </div>
         )}
 
@@ -1420,7 +1471,7 @@ export default function CartPage() {
         )}
 
         {/* ==================================================
-            EMPTY
+            EMPTY CART
         ================================================== */}
 
         {items.length ===
@@ -1437,9 +1488,9 @@ export default function CartPage() {
             <p className="mx-auto mt-2 max-w-sm text-[13px] leading-6 text-[#64748B] sm:text-sm">
               Looks like you haven't
               added anything yet.
-              Explore our collection
-              and find something for
-              your next print project.
+              Explore our products and
+              find something for your
+              next print project.
             </p>
 
             <Link
@@ -1470,16 +1521,14 @@ export default function CartPage() {
           <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12 lg:gap-8">
 
             {/* =================================================
-                CART ITEMS
+                ITEMS
             ================================================= */}
 
             <section className="min-w-0 space-y-4 lg:col-span-8">
               {items.map(
                 (item) => {
                   const itemId =
-                    getItemId(
-                      item
-                    );
+                    getItemId(item);
 
                   const options =
                     Object.entries(
@@ -1516,10 +1565,6 @@ export default function CartPage() {
                         1
                     );
 
-                  const isEditing =
-                    editingItemId ===
-                    itemId;
-
                   return (
                     <article
                       key={itemId}
@@ -1531,18 +1576,15 @@ export default function CartPage() {
                         bg-white
                       "
                     >
-                      {/* =======================================
-                          PRODUCT HEADER
-                      ======================================= */}
-
                       <div className="p-4 sm:p-5">
                         <div className="flex gap-3.5 sm:gap-5">
 
-                          {/* PRODUCT IMAGE */}
+                          {/* IMAGE */}
 
                           <Link
                             href={`/products/${encodeURIComponent(
-                              item.productId
+                              item.itemKey ||
+                                item.productId
                             )}`}
                             className="
                               relative
@@ -1558,24 +1600,17 @@ export default function CartPage() {
                               sm:w-[112px]
                             "
                           >
-                            <Image
+                            <ProductImage
                               src={
-                                item.image ||
-                                FALLBACK_IMAGE
+                                item.image
                               }
                               alt={
                                 item.name
                               }
-                              fill
-                              sizes="
-                                (max-width: 639px) 86px,
-                                112px
-                              "
-                              className="object-cover transition-transform duration-200 md:hover:scale-[1.02]"
                             />
                           </Link>
 
-                          {/* PRODUCT INFO */}
+                          {/* INFO */}
 
                           <div className="min-w-0 flex-1">
                             <div className="flex items-start justify-between gap-2">
@@ -1586,7 +1621,8 @@ export default function CartPage() {
 
                                 <Link
                                   href={`/products/${encodeURIComponent(
-                                    item.productId
+                                    item.itemKey ||
+                                      item.productId
                                   )}`}
                                   className="
                                     line-clamp-2
@@ -1614,7 +1650,7 @@ export default function CartPage() {
                                   )
                                 }
                                 disabled={
-                                  isUpdating
+                                  updating
                                 }
                                 aria-label={`Remove ${item.name}`}
                                 className="
@@ -1638,8 +1674,6 @@ export default function CartPage() {
                                 <TrashIcon />
                               </button>
                             </div>
-
-                            {/* OPTIONS */}
 
                             {options.length >
                               0 && (
@@ -1668,8 +1702,6 @@ export default function CartPage() {
                               </div>
                             )}
 
-                            {/* PRICE */}
-
                             <p className="mt-3 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
                               {formatPrice(
                                 item.price
@@ -1678,9 +1710,7 @@ export default function CartPage() {
                           </div>
                         </div>
 
-                        {/* =====================================
-                            QUANTITY + REMOVE
-                        ===================================== */}
+                        {/* QUANTITY */}
 
                         <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#EEF0F2] pt-4">
                           <div>
@@ -1700,7 +1730,7 @@ export default function CartPage() {
                                   )
                                 }
                                 disabled={
-                                  isUpdating ||
+                                  updating ||
                                   item.quantity <=
                                     1
                                 }
@@ -1739,7 +1769,7 @@ export default function CartPage() {
                                   )
                                 }
                                 disabled={
-                                  isUpdating
+                                  updating
                                 }
                                 aria-label="Increase quantity"
                                 className="
@@ -1770,7 +1800,7 @@ export default function CartPage() {
                                 )
                               }
                               disabled={
-                                isUpdating
+                                updating
                               }
                               className="
                                 inline-flex
@@ -1802,21 +1832,15 @@ export default function CartPage() {
 
                             <p className="mt-1 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
                               {formatPrice(
-                                Number(
-                                  item.price
-                                ) *
-                                  Number(
-                                    item.quantity
-                                  )
+                                item.price *
+                                  item.quantity
                               )}
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      {/* =======================================
-                          PRINT IMAGES
-                      ======================================= */}
+                      {/* PRINT SECTION */}
 
                       <div className="border-t border-[#E5E7EB] bg-[#FAFAF8] p-4 sm:p-5">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1854,7 +1878,8 @@ export default function CartPage() {
                             <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
                               Each physical
                               product needs
-                              1–3 print images.
+                              at least 1 print
+                              image.
                             </p>
                           </div>
 
@@ -1866,7 +1891,7 @@ export default function CartPage() {
                               )
                             }
                             disabled={
-                              isUpdating
+                              updating
                             }
                             className="
                               inline-flex
@@ -1894,9 +1919,7 @@ export default function CartPage() {
                           </button>
                         </div>
 
-                        {/* SMALL PREVIEWS */}
-
-                        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                           {item.printUnits.map(
                             (
                               unit,
@@ -1978,7 +2001,7 @@ export default function CartPage() {
             </section>
 
             {/* =================================================
-                ORDER SUMMARY
+                DESKTOP SUMMARY
             ================================================= */}
 
             <aside className="hidden lg:sticky lg:top-[104px] lg:col-span-4 lg:block">
@@ -1994,6 +2017,7 @@ export default function CartPage() {
                 </div>
 
                 <div className="p-5">
+
                   {/* PRINT STATUS */}
 
                   {isCartPrintReady ? (
@@ -2008,8 +2032,7 @@ export default function CartPage() {
                         </p>
 
                         <p className="mt-0.5 text-[10px] leading-4 text-green-600">
-                          All physical
-                          products are
+                          All products are
                           ready for
                           checkout.
                         </p>
@@ -2030,7 +2053,7 @@ export default function CartPage() {
                     </div>
                   )}
 
-                  {/* PRICE BREAKDOWN */}
+                  {/* PRICE */}
 
                   <div className="mt-6 space-y-3.5 text-sm">
                     <div className="flex items-center justify-between gap-4">
@@ -2057,12 +2080,13 @@ export default function CartPage() {
 
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-[#64748B]">
-                        Delivery
+                        Shipping
                       </span>
 
-                      <span className="text-right text-xs font-semibold text-[#0A1B2E]">
-                        Calculated at
-                        checkout
+                      <span className="font-bold text-[#0A1B2E]">
+                        {formatPrice(
+                          shippingCharge
+                        )}
                       </span>
                     </div>
                   </div>
@@ -2076,7 +2100,7 @@ export default function CartPage() {
 
                     <span className="text-2xl font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
                       {formatPrice(
-                        subtotal
+                        total
                       )}
                     </span>
                   </div>
@@ -2086,10 +2110,10 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={
-                      handleCheckoutClick
+                      handleCheckout
                     }
                     disabled={
-                      isUpdating ||
+                      updating ||
                       !isCartPrintReady
                     }
                     className="
@@ -2125,8 +2149,9 @@ export default function CartPage() {
                   )}
 
                   <p className="mt-4 text-center text-[10px] leading-4 text-[#94A3B8]">
-                    Taxes and delivery are
-                    calculated at checkout.
+                    Final order amount is
+                    calculated using the
+                    latest server pricing.
                   </p>
                 </div>
               </div>
@@ -2136,7 +2161,7 @@ export default function CartPage() {
       </main>
 
       {/* ========================================================
-          MOBILE CHECKOUT BAR
+          MOBILE SUMMARY
       ======================================================== */}
 
       {items.length >
@@ -2157,63 +2182,85 @@ export default function CartPage() {
             lg:hidden
           "
         >
-          <div className="mx-auto flex w-full max-w-xl items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
-                Total ·{" "}
-                {itemCount}{" "}
-                {itemCount ===
-                1
-                  ? "item"
-                  : "items"}
-              </p>
+          <div className="mx-auto w-full max-w-xl">
 
-              <p className="mt-0.5 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+            <div className="mb-2 flex items-center justify-between gap-4">
+              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+                Shipping
+              </span>
+
+              <span className="text-xs font-bold text-[#64748B]">
                 {formatPrice(
-                  subtotal
+                  shippingCharge
                 )}
-              </p>
+              </span>
             </div>
 
-            <button
-              type="button"
-              onClick={
-                handleCheckoutClick
-              }
-              disabled={
-                isUpdating ||
-                !isCartPrintReady
-              }
-              className="
-                flex
-                h-12
-                min-w-[145px]
-                shrink-0
-                items-center
-                justify-center
-                gap-2
-                rounded-[9px]
-                bg-[#0A1B2E]
-                px-4
-                text-xs
-                font-extrabold
-                text-white
-                transition-colors
-                duration-150
-                active:bg-[#081827]
-                disabled:cursor-not-allowed
-                disabled:opacity-40
-              "
-            >
-              Checkout
-              <ArrowRightIcon />
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+                  Total ·{" "}
+                  {itemCount}{" "}
+                  {itemCount ===
+                  1
+                    ? "item"
+                    : "items"}
+                </p>
+
+                <p className="mt-0.5 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+                  {formatPrice(
+                    total
+                  )}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  handleCheckout
+                }
+                disabled={
+                  updating ||
+                  !isCartPrintReady
+                }
+                className="
+                  flex
+                  h-12
+                  min-w-[145px]
+                  shrink-0
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-[9px]
+                  bg-[#0A1B2E]
+                  px-4
+                  text-xs
+                  font-extrabold
+                  text-white
+                  transition-colors
+                  duration-150
+                  active:bg-[#081827]
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                Checkout
+                <ArrowRightIcon />
+              </button>
+            </div>
+
+            {!isCartPrintReady && (
+              <p className="mt-2 text-center text-[9px] font-semibold text-[#8B6E32]">
+                Add print images before
+                checkout.
+              </p>
+            )}
           </div>
         </div>
       )}
 
       {/* ========================================================
-          PRINT CUSTOMIZATION MODAL
+          CUSTOMIZATION MODAL
       ======================================================== */}
 
       {editingItemId && (
@@ -2226,13 +2273,22 @@ export default function CartPage() {
             items-end
             justify-center
             bg-[#0A1B2E]/50
-            px-0
             sm:items-center
             sm:px-4
           "
           role="dialog"
           aria-modal="true"
           aria-labelledby="print-customization-title"
+          onMouseDown={(
+            event
+          ) => {
+            if (
+              event.target ===
+              event.currentTarget
+            ) {
+              closeCustomization();
+            }
+          }}
         >
           <div
             className="
@@ -2248,13 +2304,8 @@ export default function CartPage() {
               sm:max-w-2xl
               sm:rounded-[14px]
             "
-            onClick={(
-              event
-            ) =>
-              event.stopPropagation()
-            }
           >
-            {/* MODAL HEADER */}
+            {/* HEADER */}
 
             <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#E5E7EB] px-4 py-4 sm:px-5">
               <div className="min-w-0">
@@ -2270,8 +2321,8 @@ export default function CartPage() {
                 </h2>
 
                 <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
-                  Add 1–3 images for
-                  each physical product.
+                  Add 1–6 images for each
+                  physical product.
                 </p>
               </div>
 
@@ -2307,9 +2358,9 @@ export default function CartPage() {
               </button>
             </div>
 
-            {/* MODAL CONTENT */}
+            {/* CONTENT */}
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5 sm:py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin] sm:px-5 sm:py-5">
               {customizationError && (
                 <div className="mb-4 rounded-[9px] border border-red-200 bg-red-50 px-3.5 py-3">
                   <p className="text-xs font-semibold leading-5 text-red-600">
@@ -2368,19 +2419,16 @@ export default function CartPage() {
                 )}
               </div>
 
-              {/* INFO */}
-
               <div className="mt-4 rounded-[9px] border border-[#E6D6A9] bg-[#FBF7E9] p-3.5">
                 <p className="text-[10px] font-bold leading-5 text-[#8B6E32] sm:text-xs">
-                  Supported images should
-                  be clear and suitable
-                  for printing. Maximum
-                  5MB per image.
+                  Maximum 6 images per
+                  physical product. Each
+                  image can be up to 10MB.
                 </p>
               </div>
             </div>
 
-            {/* MODAL FOOTER */}
+            {/* FOOTER */}
 
             <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[#E5E7EB] bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-5 sm:py-4 sm:pb-4">
               <button
@@ -2462,17 +2510,6 @@ export default function CartPage() {
               </button>
             </div>
           </div>
-
-          {/* BACKDROP CLICK */}
-
-          <button
-            type="button"
-            aria-label="Close dialog"
-            className="absolute inset-0 -z-10 cursor-default"
-            onClick={
-              closeCustomization
-            }
-          />
         </div>
       )}
     </div>

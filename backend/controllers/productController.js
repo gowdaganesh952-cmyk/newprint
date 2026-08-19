@@ -767,18 +767,19 @@ export const createProduct = async (
             status = "active",
         } = req.body;
 
-        let {
-            slug,
-            price,
-            originalPrice,
-            pricingType = "fixed",
-            featured,
-            options,
-            orderSelections,
-            variants,
-            stock,
-            lowStockThreshold,
-        } = req.body;
+      let {
+    slug,
+    price,
+    originalPrice,
+    pricingType = "fixed",
+    featured,
+    options,
+    orderSelections,
+    variants,
+    stock,
+    lowStockThreshold,
+    weight,
+} = req.body;
 
         // ====================================================
         // REQUIRED
@@ -953,6 +954,29 @@ export const createProduct = async (
         let parsedLowStockThreshold = 5;
 
         let parsedVariants = [];
+        // ====================================================
+// SHIPPING WEIGHT
+//
+// Stored internally in grams.
+// Customers never see this value.
+// ====================================================
+
+const parsedWeight =
+    Number(weight);
+
+if (
+    !Number.isFinite(parsedWeight) ||
+    parsedWeight <= 0 ||
+    !Number.isInteger(parsedWeight)
+) {
+    return res
+        .status(400)
+        .json({
+            success: false,
+            message:
+                "Product weight must be a whole number greater than 0 grams",
+        });
+}
 
         // ====================================================
         // FIXED PRICING
@@ -1335,11 +1359,18 @@ export const createProduct = async (
 
                 slug,
 
-                description:
-                    description?.trim() ||
-                    "",
+               description:
+    description?.trim() ||
+    "",
 
-                pricingType,
+// ------------------------------------------------
+// INTERNAL SHIPPING WEIGHT
+// ------------------------------------------------
+
+weight:
+    parsedWeight,
+
+pricingType,
 
                 // ------------------------------------------------
                 // FIXED PRODUCT PRICING
@@ -1503,20 +1534,20 @@ export const updateProduct = async (
             status,
         } = req.body;
 
-        let {
-            slug,
-            price,
-            originalPrice,
-            pricingType,
-            featured,
-            options,
-            orderSelections,
-            variants,
-            existingImages,
-            stock,
-            lowStockThreshold,
-        } = req.body;
-
+       let {
+    slug,
+    price,
+    originalPrice,
+    pricingType,
+    featured,
+    options,
+    orderSelections,
+    variants,
+    existingImages,
+    stock,
+    lowStockThreshold,
+    weight,
+} = req.body;
         // ====================================================
         // CATEGORY
         // ====================================================
@@ -1595,6 +1626,41 @@ export const updateProduct = async (
             pricingType ||
             product.pricingType ||
             "fixed";
+            // ====================================================
+// SHIPPING WEIGHT
+//
+// Keep the existing product weight when editing
+// unless a new weight is supplied.
+// ====================================================
+
+let finalWeight =
+    product.weight ?? 100;
+
+if (
+    weight !== undefined &&
+    weight !== ""
+) {
+    finalWeight =
+        Number(weight);
+
+    if (
+        !Number.isFinite(
+            finalWeight
+        ) ||
+        finalWeight <= 0 ||
+        !Number.isInteger(
+            finalWeight
+        )
+    ) {
+        return res
+            .status(400)
+            .json({
+                success: false,
+                message:
+                    "Product weight must be a whole number greater than 0 grams",
+            });
+    }
+}
 
         if (
             finalPricingType !==
@@ -2174,14 +2240,21 @@ export const updateProduct = async (
                     slug:
                         finalSlug,
 
-                    description:
-                        description !==
-                        undefined
-                            ? description.trim()
-                            : product.description,
+                  description:
+    description !==
+    undefined
+        ? description.trim()
+        : product.description,
 
-                    pricingType:
-                        finalPricingType,
+// ------------------------------------------------
+// INTERNAL SHIPPING WEIGHT
+// ------------------------------------------------
+
+weight:
+    finalWeight,
+
+pricingType:
+    finalPricingType,
 
                     // ------------------------------------------------
                     // ORIGINAL / MRP PRICE

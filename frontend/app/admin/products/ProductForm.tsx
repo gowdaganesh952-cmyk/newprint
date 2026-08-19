@@ -164,6 +164,21 @@ export default function ProductForm({
   );
 
   // ==========================================================
+  // INTERNAL SHIPPING WEIGHT
+  //
+  // Stored in grams.
+  // Used only for shipping calculation.
+  // Never displayed to customers.
+  // ==========================================================
+
+  const [weight, setWeight] = useState<string>(
+    initialData?.weight !== undefined &&
+      initialData?.weight !== null
+      ? String(initialData.weight)
+      : ""
+  );
+
+  // ==========================================================
   // PRICING
   // ==========================================================
 
@@ -899,6 +914,18 @@ export default function ProductForm({
     }
 
     // ========================================================
+    // SHIPPING WEIGHT
+    // ========================================================
+
+    if (
+      weight === "" ||
+      !/^\d+$/.test(weight) ||
+      Number(weight) <= 0
+    ) {
+      return "Please enter a valid product weight in grams.";
+    }
+
+    // ========================================================
     // FIXED PRICING VALUES
     // ========================================================
 
@@ -1102,6 +1129,19 @@ export default function ProductForm({
         description.trim()
       );
     }
+
+    // ========================================================
+    // INTERNAL SHIPPING WEIGHT
+    // ========================================================
+
+    formData.append(
+      "weight",
+      String(
+        Math.floor(
+          Number(weight)
+        )
+      )
+    );
 
     // ========================================================
     // PRICING
@@ -1465,6 +1505,77 @@ export default function ProductForm({
               placeholder="Describe the product..."
               className="mt-1 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
             />
+
+          </div>
+
+          {/* ==================================================
+              INTERNAL SHIPPING WEIGHT
+          =================================================== */}
+
+          <div>
+
+            <label className="block text-sm font-medium text-[#0A1B2E]">
+              Product Weight *
+            </label>
+
+            <div className="mt-2 flex w-full overflow-hidden rounded-[9px] border border-[#E5E7EB] bg-white focus-within:border-[#B9954F]">
+
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                value={weight}
+                onChange={(e) => {
+                  const value = e.target.value;
+
+                  if (
+                    value === "" ||
+                    /^\d+$/.test(value)
+                  ) {
+                    setWeight(value);
+                  }
+                }}
+                placeholder="Example: 250"
+                className="
+                  min-w-0
+                  flex-1
+                  bg-transparent
+                  px-3
+                  py-2.5
+                  text-sm
+                  font-semibold
+                  text-[#0A1B2E]
+                  outline-none
+                  placeholder:text-[#94A3B8]
+                "
+              />
+
+              <span
+                className="
+                  flex
+                  shrink-0
+                  items-center
+                  border-l
+                  border-[#E5E7EB]
+                  bg-[#F7F7F5]
+                  px-3
+                  text-xs
+                  font-semibold
+                  text-[#64748B]
+                  sm:px-4
+                  sm:text-sm
+                "
+              >
+                grams
+              </span>
+
+            </div>
+
+            <p className="mt-2 text-xs leading-5 text-[#94A3B8]">
+              Used internally to calculate shipping charges.
+              Customers will not see the product weight.
+            </p>
 
           </div>
 

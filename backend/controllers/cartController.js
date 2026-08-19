@@ -6,14 +6,53 @@ import cloudinary from "../config/cloudinary.js";
    CONSTANTS
 ============================================================ */
 
-const MAX_PRINT_IMAGES = 3;
+const MAX_PRINT_IMAGES = 6;
+
+const SHIPPING_RATE_PER_100G = 15;
+
+const SHIPPING_WEIGHT_UNIT = 100;
+
+const MAX_CART_QUANTITY = 100;
 
 /* ============================================================
    BASIC HELPERS
 ============================================================ */
 
-const normalizeValue = (value) => {
-  return String(value ?? "").trim();
+const normalizeValue = (
+  value
+) => {
+  return String(
+    value ?? ""
+  ).trim();
+};
+
+/* ============================================================
+   QUANTITY HELPER
+============================================================ */
+
+const normalizeQuantity = (
+  value
+) => {
+  const quantity =
+    Number(value);
+
+  if (
+    !Number.isInteger(
+      quantity
+    ) ||
+    quantity < 1
+  ) {
+    return null;
+  }
+
+  if (
+    quantity >
+    MAX_CART_QUANTITY
+  ) {
+    return MAX_CART_QUANTITY;
+  }
+
+  return quantity;
 };
 
 /* ============================================================
@@ -27,26 +66,56 @@ const normalizeSelections = (
     return {};
   }
 
-  if (selections instanceof Map) {
+  if (
+    selections instanceof Map
+  ) {
     return Object.fromEntries(
-      selections.entries()
+      Array.from(
+        selections.entries()
+      )
+        .map(
+          ([key, value]) => [
+            normalizeValue(
+              key
+            ),
+            normalizeValue(
+              value
+            ),
+          ]
+        )
+        .filter(
+          ([key, value]) =>
+            key &&
+            value
+        )
     );
   }
 
   if (
-    typeof selections === "object" &&
-    !Array.isArray(selections)
+    typeof selections ===
+      "object" &&
+    !Array.isArray(
+      selections
+    )
   ) {
     return Object.fromEntries(
-      Object.entries(selections)
-        .map(([key, value]) => [
-          normalizeValue(key),
-          normalizeValue(value),
-        ])
+      Object.entries(
+        selections
+      )
+        .map(
+          ([key, value]) => [
+            normalizeValue(
+              key
+            ),
+            normalizeValue(
+              value
+            ),
+          ]
+        )
         .filter(
           ([key, value]) =>
-            key.length > 0 &&
-            value.length > 0
+            key &&
+            value
         )
     );
   }
@@ -58,238 +127,500 @@ const normalizeSelections = (
    GENERATE ITEM KEY
 ============================================================ */
 
+/*
+ * Same product + same selections
+ * = same cart line.
+ *
+ * Different selections
+ * = different cart line.
+ */
+
 const generateItemKey = (
   productId,
   selections = {}
 ) => {
+  const safeProductId =
+    normalizeValue(
+      productId
+    );
+
+  const normalized =
+    normalizeSelections(
+      selections
+    );
+
+  const entries =
+    Object.entries(
+      normalized
+    ).sort(
+      ([a], [b]) =>
+        a.localeCompare(b)
+    );
+
+  if (
+    entries.length ===
+    0
+  ) {
+    return safeProductId;
+  }
+
+  return [
+    safeProductId,
+
+    ...entries.map(
+      ([key, value]) =>
+        `${key}:${value}`
+    ),
+  ].join("|");
+};
+
+/* ============================================================
+   SELECTION MATCHING
+============================================================ */
+
+const selectionsMatch = (
+  variantSelections,
+  requestedSelections
+) => {
+  const variant =
+    normalizeSelections(
+      variantSelections
+    );
+
+  const requested =
+    normalizeSelections(
+      requestedSelections
+    );
+
+  const variantKeys =
+    Object.keys(
+      variant
+    );
+
+  const requestedKeys =
+    Object.keys(
+      requested
+    );
+
+  if (
+    variantKeys.length !==
+    requestedKeys.length
+  ) {
+    return false;
+  }
+
+  return variantKeys.every(
+    (key) =>
+      variant[key] ===
+      requested[key]
+  );
+};
+
+/* ============================================================
+   PRODUCT VARIANT
+============================================================ */
+
+const findMatchingVariant = (
+  product,
+  selections
+) => {
+  if (
+    product.pricingType !==
+    "variants"
+  ) {
+    return null;
+  }
+
+  const variants =
+    Array.isArray(
+      product.variants
+    )
+      ? product.variants
+      : [];
+
   const normalizedSelections =
     normalizeSelections(
       selections
     );
 
-  const sortedEntries =
-    Object.entries(
-      normalizedSelections
-    ).sort(([a], [b]) =>
-      a.localeCompare(b)
-    );
+  return (
+    variants.find(
+      (variant) => {
+        if (!variant) {
+          return false;
+        }
 
-  const selectionString =
-    sortedEntries
-      .map(
-        ([key, value]) =>
-          `${encodeURIComponent(
-            key
-          )}:${encodeURIComponent(
-            value
-          )}`
-      )
-      .join("|");
+        if (
+          variant.status ===
+          "inactive"
+        ) {
+          return false;
+        }
 
-  return selectionString
-    ? `${productId}|${selectionString}`
-    : String(productId);
-};
-
-/* ============================================================
-   COMPARE SELECTIONS
-============================================================ */
-
-const selectionsMatch = (
-  first = {},
-  second = {}
-) => {
-  const a =
-    normalizeSelections(first);
-
-  const b =
-    normalizeSelections(second);
-
-  const aKeys =
-    Object.keys(a).sort();
-
-  const bKeys =
-    Object.keys(b).sort();
-
-  if (
-    aKeys.length !==
-    bKeys.length
-  ) {
-    return false;
-  }
-
-  return aKeys.every(
-    (key, index) => {
-      if (
-        key !==
-        bKeys[index]
-      ) {
-        return false;
+        return selectionsMatch(
+          variant.selections,
+          normalizedSelections
+        );
       }
-
-      return (
-        normalizeValue(
-          a[key]
-        ) ===
-        normalizeValue(
-          b[key]
-        )
-      );
-    }
+    ) || null
   );
 };
 
 /* ============================================================
-   GENERATE PRINT UNIT ID
+   PRODUCT PRICE
 ============================================================ */
 
-const generateUnitId = () => {
-  return `unit_${Date.now()}_${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
+const getProductPrice = (
+  product,
+  selections
+) => {
+  /*
+   * FIXED PRICE PRODUCT
+   */
+
+  if (
+    product.pricingType !==
+    "variants"
+  ) {
+    const price =
+      Number(
+        product.price
+      );
+
+    if (
+      !Number.isFinite(
+        price
+      ) ||
+      price < 0
+    ) {
+      throw new Error(
+        "Product does not have a valid price."
+      );
+    }
+
+    return {
+      price,
+      variant: null,
+    };
+  }
+
+  /*
+   * VARIANT PRODUCT
+   */
+
+  const variant =
+    findMatchingVariant(
+      product,
+      selections
+    );
+
+  if (!variant) {
+    throw new Error(
+      "The selected product variant is unavailable."
+    );
+  }
+
+  const price =
+    Number(
+      variant.price
+    );
+
+  if (
+    !Number.isFinite(
+      price
+    ) ||
+    price < 0
+  ) {
+    throw new Error(
+      "The selected variant does not have a valid price."
+    );
+  }
+
+  return {
+    price,
+    variant,
+  };
 };
 
 /* ============================================================
-   CREATE EMPTY PRINT UNIT
+   VALIDATE PRODUCT + SELECTIONS
 ============================================================ */
 
-const createPrintUnit = () => {
-  return {
-    unitId:
-      generateUnitId(),
+const validateCartItem =
+  async (
+    productId,
+    requestedSelections = {}
+  ) => {
+    if (!productId) {
+      throw new Error(
+        "Product ID is required."
+      );
+    }
 
-    images: [],
+    const product =
+      await Product.findById(
+        productId
+      );
+
+    if (!product) {
+      throw new Error(
+        "Product not found."
+      );
+    }
+
+    if (
+      product.status !==
+      "active"
+    ) {
+      throw new Error(
+        "This product is currently unavailable."
+      );
+    }
+
+    const normalizedSelections =
+      normalizeSelections(
+        requestedSelections
+      );
+
+    /*
+     * Validate required customer
+     * selections.
+     */
+
+    const orderSelections =
+      Array.isArray(
+        product.orderSelections
+      )
+        ? product.orderSelections
+        : [];
+
+    for (
+      const selection of
+        orderSelections
+    ) {
+      if (
+        !selection?.required
+      ) {
+        continue;
+      }
+
+      const name =
+        normalizeValue(
+          selection.name
+        );
+
+      if (!name) {
+        continue;
+      }
+
+      const selectedValue =
+        normalizeValue(
+          normalizedSelections[
+            name
+          ]
+        );
+
+      if (!selectedValue) {
+        throw new Error(
+          `Please select ${name}.`
+        );
+      }
+
+      const allowedValues =
+        Array.isArray(
+          selection.values
+        )
+          ? selection.values.map(
+              normalizeValue
+            )
+          : [];
+
+      if (
+        allowedValues.length >
+          0 &&
+        !allowedValues.includes(
+          selectedValue
+        )
+      ) {
+        throw new Error(
+          `Invalid selection for ${name}.`
+        );
+      }
+    }
+
+    /*
+     * If product uses variants,
+     * validate the exact variant.
+     */
+
+    const {
+      price,
+      variant,
+    } =
+      getProductPrice(
+        product,
+        normalizedSelections
+      );
+
+    /*
+     * Return only the product
+     * information required by
+     * the cart.
+     */
+
+    return {
+      product,
+      validatedSelections:
+        normalizedSelections,
+      price,
+      variant,
+    };
   };
-};
+
+/* ============================================================
+   PRINT UNIT ID
+============================================================ */
+
+const generateUnitId =
+  () => {
+    return `unit_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+  };
+
+/* ============================================================
+   CREATE PRINT UNIT
+============================================================ */
+
+const createPrintUnit =
+  () => {
+    return {
+      unitId:
+        generateUnitId(),
+
+      images: [],
+    };
+  };
 
 /* ============================================================
    CREATE PRINT UNITS
 ============================================================ */
 
-const createPrintUnits = (
-  quantity
-) => {
-  const safeQuantity =
-    Math.max(
-      1,
-      Number(quantity) || 1
-    );
+const createPrintUnits =
+  (quantity) => {
+    const safeQuantity =
+      Math.max(
+        1,
+        Number(
+          quantity
+        ) || 1
+      );
 
-  return Array.from(
-    {
-      length:
-        safeQuantity,
-    },
-    () =>
-      createPrintUnit()
-  );
-};
+    return Array.from(
+      {
+        length:
+          safeQuantity,
+      },
+      () =>
+        createPrintUnit()
+    );
+  };
 
 /* ============================================================
    NORMALIZE PRINT UNITS
 ============================================================ */
 
-/*
- * Makes sure:
- *
- * printUnits.length === quantity
- *
- * Existing images are preserved.
- *
- * Missing units are created empty.
- *
- * Extra units are removed from the end.
- */
-
-const normalizePrintUnits = (
-  item
-) => {
-  const quantity =
-    Math.max(
-      1,
-      Number(
-        item?.quantity || 1
-      )
-    );
-
-  const existingUnits =
-    Array.isArray(
-      item?.printUnits
-    )
-      ? item.printUnits
-      : [];
-
-  const units = [];
-
-  for (
-    let index = 0;
-    index < quantity;
-    index++
-  ) {
-    const existing =
-      existingUnits[index];
-
-    if (existing) {
-      const images =
-        Array.isArray(
-          existing.images
-        )
-          ? existing.images
-              .slice(
-                0,
-                MAX_PRINT_IMAGES
-              )
-              .map(
-                (image) => ({
-                  url:
-                    normalizeValue(
-                      image?.url
-                    ),
-
-                  publicId:
-                    normalizeValue(
-                      image?.publicId
-                    ),
-                })
-              )
-              .filter(
-                (image) =>
-                  image.url &&
-                  image.publicId
-              )
-          : [];
-
-      units.push({
-        unitId:
-          normalizeValue(
-            existing.unitId
-          ) ||
-          generateUnitId(),
-
-        images,
-      });
-    } else {
-      units.push(
-        createPrintUnit()
+const normalizePrintUnits =
+  (item) => {
+    const quantity =
+      Math.max(
+        1,
+        Number(
+          item?.quantity
+        ) || 1
       );
-    }
-  }
 
-  return units;
-};
+    const existingUnits =
+      Array.isArray(
+        item?.printUnits
+      )
+        ? item.printUnits
+        : [];
+
+    const units = [];
+
+    for (
+      let index = 0;
+      index < quantity;
+      index++
+    ) {
+      const existing =
+        existingUnits[
+          index
+        ];
+
+      if (
+        existing
+      ) {
+        const images =
+          Array.isArray(
+            existing.images
+          )
+            ? existing.images
+                .slice(
+                  0,
+                  MAX_PRINT_IMAGES
+                )
+                .map(
+                  (image) => ({
+                    url:
+                      normalizeValue(
+                        image?.url
+                      ),
+
+                    publicId:
+                      normalizeValue(
+                        image?.publicId
+                      ),
+                  })
+                )
+                .filter(
+                  (image) =>
+                    image.url &&
+                    image.publicId
+                )
+            : [];
+
+        units.push({
+          unitId:
+            normalizeValue(
+              existing.unitId
+            ) ||
+            generateUnitId(),
+
+          images,
+        });
+      } else {
+        units.push(
+          createPrintUnit()
+        );
+      }
+    }
+
+    return units;
+  };
 
 /* ============================================================
-   SYNC PRINT UNITS WITH QUANTITY
+   SYNC PRINT UNITS TO QUANTITY
 ============================================================ */
 
-const syncPrintUnitsToQuantity = (
-  item
-) => {
-  item.printUnits =
-    normalizePrintUnits(
-      item
-    );
-};
+const syncPrintUnitsToQuantity =
+  (item) => {
+    item.printUnits =
+      normalizePrintUnits(
+        item
+      );
+  };
 
 /* ============================================================
    VALIDATE PRINT UNITS
@@ -310,19 +641,29 @@ const validatePrintUnits = (
   }
 
   const expectedQuantity =
-    Number(quantity);
+    Number(
+      quantity
+    );
 
   if (
     printUnits.length !==
     expectedQuantity
   ) {
     throw new Error(
-      `Please provide print images for all ${expectedQuantity} product${expectedQuantity === 1 ? "" : "s"}.`
+      `Please provide print images for all ${expectedQuantity} physical product${
+        expectedQuantity ===
+        1
+          ? ""
+          : "s"
+      }.`
     );
   }
 
   return printUnits.map(
-    (unit, index) => {
+    (
+      unit,
+      index
+    ) => {
       const images =
         Array.isArray(
           unit?.images
@@ -331,10 +672,14 @@ const validatePrintUnits = (
           : [];
 
       /*
-       * Minimum 1 image.
+       * Minimum:
+       *
+       * 1 image
        */
+
       if (
-        images.length < 1
+        images.length <
+        1
       ) {
         throw new Error(
           `Product ${
@@ -344,8 +689,11 @@ const validatePrintUnits = (
       }
 
       /*
-       * Maximum 3 images.
+       * Maximum:
+       *
+       * 6 images
        */
+
       if (
         images.length >
         MAX_PRINT_IMAGES
@@ -403,299 +751,201 @@ const validatePrintUnits = (
 };
 
 /* ============================================================
-   FIND MATCHING VARIANT
+   PRODUCT WEIGHT
 ============================================================ */
 
-const findMatchingVariant = (
-  product,
-  selections
-) => {
-  if (
-    product.pricingType !==
-    "variants"
-  ) {
-    return null;
-  }
+/*
+ * Weight comes ONLY from Product.
+ *
+ * It is NEVER stored in the cart item
+ * response and NEVER returned to the
+ * customer.
+ */
 
-  const variants =
-    Array.isArray(
-      product.variants
-    )
-      ? product.variants
-      : [];
-
-  const normalizedSelections =
-    normalizeSelections(
-      selections
-    );
-
-  return (
-    variants.find(
-      (variant) => {
-        if (!variant) {
-          return false;
-        }
-
-        if (
-          variant.status ===
-          "inactive"
-        ) {
-          return false;
-        }
-
-        return selectionsMatch(
-          variant.selections,
-          normalizedSelections
-        );
-      }
-    ) || null
-  );
-};
-
-/* ============================================================
-   GET PRODUCT PRICE
-============================================================ */
-
-const getProductPrice = (
-  product,
-  selections
-) => {
-  /*
-   * Fixed-price product.
-   */
-  if (
-    product.pricingType !==
-    "variants"
-  ) {
-    const price =
+const getProductWeight =
+  (product) => {
+    const weight =
       Number(
-        product.price
+        product?.weight
       );
 
     if (
-      !Number.isFinite(
-        price
-      ) ||
-      price < 0
+      Number.isFinite(
+        weight
+      ) &&
+      weight > 0
     ) {
-      throw new Error(
-        "Product does not have a valid price."
-      );
+      return weight;
     }
 
-    return {
-      price,
-      variant: null,
-    };
-  }
+    /*
+     * Safe fallback for older
+     * products.
+     */
 
-  /*
-   * Variant product.
-   */
-  const variant =
-    findMatchingVariant(
-      product,
-      selections
-    );
-
-  if (!variant) {
-    throw new Error(
-      "The selected product variant is unavailable."
-    );
-  }
-
-  const price =
-    Number(
-      variant.price
-    );
-
-  if (
-    !Number.isFinite(
-      price
-    ) ||
-    price < 0
-  ) {
-    throw new Error(
-      "The selected variant does not have a valid price."
-    );
-  }
-
-  return {
-    price,
-    variant,
+    return 100;
   };
-};
 
 /* ============================================================
-   VALIDATE PRODUCT + SELECTIONS + PRICE
+   SHIPPING CALCULATION
 ============================================================ */
 
-const validateCartItem =
+/*
+ * Shipping rate:
+ *
+ * 1–100g       = ₹15
+ * 101–200g     = ₹30
+ * 201–300g     = ₹45
+ * 301–400g     = ₹60
+ *
+ * Formula:
+ *
+ * ceil(total grams / 100) × 15
+ *
+ * Example:
+ *
+ * Product A:
+ * 250g × 2
+ *
+ * Product B:
+ * 150g × 1
+ *
+ * Total:
+ * 650g
+ *
+ * Shipping:
+ * ceil(650 / 100) × 15
+ * = 7 × 15
+ * = ₹105
+ */
+
+const calculateShippingCharge =
+  (items = []) => {
+    let totalWeight =
+      0;
+
+    for (
+      const item of
+        items
+    ) {
+      const product =
+        item?.__product;
+
+      const productWeight =
+        getProductWeight(
+          product
+        );
+
+      const quantity =
+        Math.max(
+          0,
+          Number(
+            item?.quantity
+          ) || 0
+        );
+
+      totalWeight +=
+        productWeight *
+        quantity;
+    }
+
+    if (
+      totalWeight <=
+      0
+    ) {
+      return 0;
+    }
+
+    return (
+      Math.ceil(
+        totalWeight /
+          SHIPPING_WEIGHT_UNIT
+      ) *
+      SHIPPING_RATE_PER_100G
+    );
+  };
+
+/* ============================================================
+   ATTACH PRODUCTS
+============================================================ */
+
+/*
+ * Product documents are attached
+ * temporarily using __product.
+ *
+ * __product is removed before
+ * sending the response.
+ */
+
+const attachProducts =
   async (
-    productId,
-    requestedSelections = {}
+    items
   ) => {
-    if (!productId) {
-      throw new Error(
-        "Product ID is required."
-      );
-    }
-
-    const product =
-      await Product.findById(
-        productId
-      );
-
-    if (!product) {
-      throw new Error(
-        "Product not found."
-      );
-    }
-
-    if (
-      product.status !==
-      "active"
-    ) {
-      throw new Error(
-        "Product is currently unavailable."
-      );
-    }
-
-    const normalizedRequested =
-      normalizeSelections(
-        requestedSelections
-      );
-
-    const orderSelections =
-      Array.isArray(
-        product.orderSelections
-      )
-        ? product.orderSelections
-        : [];
-
-    const allowedSelectionNames =
-      new Set(
-        orderSelections.map(
-          (selection) =>
-            normalizeValue(
-              selection.name
-            )
+    const productIds =
+      items
+        .map(
+          (item) =>
+            item.productId
         )
-      );
+        .filter(Boolean);
 
-    /*
-     * Reject unknown selections.
-     */
-    for (
-      const key of Object.keys(
-        normalizedRequested
-      )
-    ) {
-      if (
-        !allowedSelectionNames.has(
-          key
-        )
-      ) {
-        throw new Error(
-          `Invalid product selection: ${key}`
-        );
-      }
-    }
+    const products =
+      await Product.find({
+        _id: {
+          $in:
+            productIds,
+        },
+      }).lean();
 
-    const validatedSelections =
-      {};
-
-    /*
-     * Validate configured selections.
-     */
-    for (
-      const reqSel of
-        orderSelections
-    ) {
-      const name =
-        normalizeValue(
-          reqSel.name
-        );
-
-      const value =
-        normalizeValue(
-          normalizedRequested[
-            name
+    const productMap =
+      new Map(
+        products.map(
+          (product) => [
+            product._id.toString(),
+            product,
           ]
-        );
-
-      /*
-       * Required selection.
-       */
-      if (
-        reqSel.required &&
-        !value
-      ) {
-        throw new Error(
-          `Missing required selection: ${name}`
-        );
-      }
-
-      /*
-       * Optional selection.
-       */
-      if (!value) {
-        continue;
-      }
-
-      const allowedValues =
-        Array.isArray(
-          reqSel.values
         )
-          ? reqSel.values.map(
-              normalizeValue
-            )
-          : [];
-
-      if (
-        !allowedValues.includes(
-          value
-        )
-      ) {
-        throw new Error(
-          `Invalid value for ${name}`
-        );
-      }
-
-      validatedSelections[
-        name
-      ] = value;
-    }
-
-    /*
-     * NEVER trust frontend price.
-     */
-    const {
-      price,
-      variant,
-    } =
-      getProductPrice(
-        product,
-        validatedSelections
       );
 
-    return {
-      product,
-      validatedSelections,
-      price,
-      variant,
-    };
+    return items.map(
+      (item) => {
+        const plainItem =
+          item.toObject
+            ? item.toObject()
+            : {
+                ...item,
+              };
+
+        const product =
+          productMap.get(
+            String(
+              item.productId
+            )
+          );
+
+        return {
+          ...plainItem,
+
+          __product:
+            product ||
+            null,
+        };
+      }
+    );
   };
 
 /* ============================================================
-   CART TOTALS
+   BUILD CART RESPONSE
 ============================================================ */
 
-const calculateCartTotals =
+const buildCartResponse =
   (items = []) => {
     const subtotal =
       items.reduce(
-        (sum, item) =>
+        (
+          sum,
+          item
+        ) =>
           sum +
           Number(
             item.price
@@ -708,7 +958,10 @@ const calculateCartTotals =
 
     const itemCount =
       items.reduce(
-        (sum, item) =>
+        (
+          sum,
+          item
+        ) =>
           sum +
           Number(
             item.quantity
@@ -716,10 +969,67 @@ const calculateCartTotals =
         0
       );
 
+    const shippingCharge =
+      calculateShippingCharge(
+        items
+      );
+
+    const total =
+      subtotal +
+      shippingCharge;
+
     return {
+      items,
+
       subtotal,
+
+      shippingCharge,
+
+      total,
+
       itemCount,
     };
+  };
+
+/* ============================================================
+   SAFE CART RESPONSE
+============================================================ */
+
+/*
+ * NEVER send:
+ *
+ * __product
+ * weight
+ * totalWeight
+ *
+ * Customer receives only:
+ *
+ * items
+ * subtotal
+ * shippingCharge
+ * total
+ * itemCount
+ */
+
+const sanitizeCartItems =
+  (items = []) => {
+    return items.map(
+      (item) => {
+        const {
+          __product,
+          weight,
+          ...safeItem
+        } = item;
+
+        /*
+         * Explicitly remove any old
+         * weight field that may still
+         * exist in legacy cart data.
+         */
+
+        return safeItem;
+      }
+    );
   };
 
 /* ============================================================
@@ -727,7 +1037,10 @@ const calculateCartTotals =
 ============================================================ */
 
 export const getCart =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
@@ -737,241 +1050,73 @@ export const getCart =
           userId,
         });
 
-      /*
-       * No cart yet.
-       */
       if (!cart) {
         cart =
-          await Cart.create({
+          new Cart({
             userId,
             items: [],
           });
 
-        return res.status(200).json({
-          success: true,
-
-          cart: {
-            items: [],
-            subtotal: 0,
-            itemCount: 0,
-          },
-
-          messages: [],
-        });
-      }
-
-      let isModified =
-        false;
-
-      const messages = [];
-
-      const validItems = [];
-
-      /*
-       * Reconcile every item against
-       * the current product.
-       */
-      for (
-        const item of cart.items
-      ) {
-        try {
-          const {
-            product,
-            validatedSelections,
-            price,
-          } =
-            await validateCartItem(
-              item.productId,
-              normalizeSelections(
-                item.selections
-              )
-            );
-
-          /*
-           * Correct item key.
-           */
-          const correctItemKey =
-            generateItemKey(
-              product._id.toString(),
-              validatedSelections
-            );
-
-          if (
-            item.itemKey !==
-            correctItemKey
-          ) {
-            item.itemKey =
-              correctItemKey;
-
-            isModified =
-              true;
-          }
-
-          /*
-           * Correct name.
-           */
-          if (
-            item.name !==
-            product.name
-          ) {
-            item.name =
-              product.name;
-
-            isModified =
-              true;
-          }
-
-          /*
-           * Correct main product image.
-           */
-          const latestImage =
-            product.images?.[0] ||
-            "";
-
-          if (
-            item.image !==
-            latestImage
-          ) {
-            item.image =
-              latestImage;
-
-            isModified =
-              true;
-          }
-
-          /*
-           * Correct selections.
-           */
-          const oldSelections =
-            normalizeSelections(
-              item.selections
-            );
-
-          if (
-            !selectionsMatch(
-              oldSelections,
-              validatedSelections
-            )
-          ) {
-            item.selections =
-              validatedSelections;
-
-            isModified =
-              true;
-          }
-
-          /*
-           * Correct current price.
-           */
-          if (
-            Number(
-              item.price
-            ) !==
-            Number(price)
-          ) {
-            messages.push(
-              `The price of ${
-                product.name
-              } has changed from ₹${Number(
-                item.price
-              ).toLocaleString(
-                "en-IN"
-              )} to ₹${Number(
-                price
-              ).toLocaleString(
-                "en-IN"
-              )}.`
-            );
-
-            item.price =
-              price;
-
-            isModified =
-              true;
-          }
-
-          /*
-           * IMPORTANT:
-           *
-           * Upgrade old cart items
-           * to printUnits.
-           */
-          const beforeUnits =
-            Array.isArray(
-              item.printUnits
-            )
-              ? item.printUnits
-                  .length
-              : 0;
-
-          syncPrintUnitsToQuantity(
-            item
-          );
-
-          if (
-            beforeUnits !==
-            item.printUnits.length
-          ) {
-            isModified =
-              true;
-          }
-
-          validItems.push(
-            item
-          );
-        } catch (error) {
-          messages.push(
-            `${item.name} was removed from your cart because the selected product or variant is no longer available.`
-          );
-
-          isModified =
-            true;
-        }
-      }
-
-      /*
-       * Save reconciliation.
-       */
-      if (isModified) {
-        cart.items =
-          validItems;
-
         await cart.save();
       }
 
-      const {
-        subtotal,
-        itemCount,
-      } =
-        calculateCartTotals(
+      /*
+       * Normalize old carts.
+       */
+
+      for (
+        const item of
+          cart.items
+      ) {
+        syncPrintUnitsToQuantity(
+          item
+        );
+      }
+
+      await cart.save();
+
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         cart: {
+          ...cartData,
+
           items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
+            safeItems,
         },
-
-        messages,
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Get Cart Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        500
+      ).json({
         success: false,
 
         message:
-          "Failed to fetch cart.",
+          "Failed to get cart.",
       });
     }
   };
@@ -981,31 +1126,35 @@ export const getCart =
 ============================================================ */
 
 export const addItem =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
 
       const {
         productId,
-        quantity = 1,
+        quantity: requestedQuantity,
         selections = {},
       } = req.body;
 
-      /*
-       * Validate quantity.
-       */
+      const quantity =
+        normalizeQuantity(
+          requestedQuantity
+        );
+
       if (
-        !Number.isInteger(
-          quantity
-        ) ||
-        quantity < 1
+        !quantity
       ) {
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
-            "Invalid quantity.",
+            `Quantity must be between 1 and ${MAX_CART_QUANTITY}.`,
         });
       }
 
@@ -1013,6 +1162,7 @@ export const addItem =
        * Validate product and get
        * real backend price.
        */
+
       const {
         product,
         validatedSelections,
@@ -1023,10 +1173,6 @@ export const addItem =
           selections
         );
 
-      /*
-       * Generate exact variant-aware
-       * cart key.
-       */
       const itemKey =
         generateItemKey(
           product._id.toString(),
@@ -1038,9 +1184,6 @@ export const addItem =
           userId,
         });
 
-      /*
-       * Create cart if necessary.
-       */
       if (!cart) {
         cart =
           new Cart({
@@ -1049,10 +1192,6 @@ export const addItem =
           });
       }
 
-      /*
-       * Find same product + same
-       * selections.
-       */
       const existingItem =
         cart.items.find(
           (item) =>
@@ -1060,10 +1199,11 @@ export const addItem =
             itemKey
         );
 
-      if (existingItem) {
+      if (
+        existingItem
+      ) {
         /*
-         * Preserve existing physical
-         * product units and images.
+         * Preserve existing images.
          */
 
         syncPrintUnitsToQuantity(
@@ -1076,8 +1216,11 @@ export const addItem =
           );
 
         const newQuantity =
-          oldQuantity +
-          quantity;
+          Math.min(
+            MAX_CART_QUANTITY,
+            oldQuantity +
+              quantity
+          );
 
         existingItem.quantity =
           newQuantity;
@@ -1096,25 +1239,16 @@ export const addItem =
           validatedSelections;
 
         /*
-         * Add empty units for newly
-         * added physical products.
+         * Add empty physical
+         * product units.
          */
-        while (
+
+        syncPrintUnitsToQuantity(
           existingItem
-            .printUnits
-            .length <
-          newQuantity
-        ) {
-          existingItem.printUnits.push(
-            createPrintUnit()
-          );
-        }
+        );
       } else {
         /*
          * New cart line.
-         *
-         * Every physical product
-         * gets its own empty unit.
          */
 
         cart.items.push({
@@ -1146,43 +1280,71 @@ export const addItem =
 
       await cart.save();
 
-      const {
-        subtotal,
-        itemCount,
-      } =
-        calculateCartTotals(
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
           "Item added to cart.",
 
         cart: {
+          ...cartData,
+
           items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
+            safeItems,
         },
       });
-    } catch (error) {
-      console.error(
-        "Add Item Error:",
-        error
-      );
+  } catch (error) {
+    console.error(
+      "========================================"
+    );
 
-      return res.status(400).json({
-        success: false,
+    console.error(
+      "ADD TO CART ERROR"
+    );
 
-        message:
-          error.message ||
-          "Failed to add item.",
-      });
-    }
+    console.error(
+      "Message:",
+      error?.message
+    );
+
+    console.error(
+      "Stack:",
+      error?.stack
+    );
+
+    console.error(
+      "Request body:",
+      req.body
+    );
+
+    console.error(
+      "========================================"
+    );
+
+    return res.status(400).json({
+      success: false,
+      message:
+        error?.message ||
+        "Failed to add item to cart.",
+    });
+  }
   };
 
 /* ============================================================
@@ -1190,7 +1352,10 @@ export const addItem =
 ============================================================ */
 
 export const updateItemQuantity =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
@@ -1200,23 +1365,25 @@ export const updateItemQuantity =
       } = req.params;
 
       const {
-        quantity,
+        quantity:
+          requestedQuantity,
       } = req.body;
 
-      /*
-       * Validate quantity.
-       */
+      const quantity =
+        normalizeQuantity(
+          requestedQuantity
+        );
+
       if (
-        !Number.isInteger(
-          quantity
-        ) ||
-        quantity < 1
+        !quantity
       ) {
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
-            "Invalid quantity.",
+            `Quantity must be between 1 and ${MAX_CART_QUANTITY}.`,
         });
       }
 
@@ -1226,7 +1393,9 @@ export const updateItemQuantity =
         });
 
       if (!cart) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -1242,7 +1411,9 @@ export const updateItemQuantity =
         );
 
       if (!item) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -1251,76 +1422,109 @@ export const updateItemQuantity =
       }
 
       /*
-       * Preserve existing units.
+       * Preserve existing images
+       * when changing quantity.
        */
+
       syncPrintUnitsToQuantity(
         item
       );
 
-      const oldQuantity =
-        Number(
-          item.quantity
-        );
-
-      /*
-       * Update quantity.
-       */
       item.quantity =
         quantity;
 
       /*
-       * Sync units.
+       * Increasing quantity:
+       * empty units are created.
        *
-       * If increased:
-       * new empty units are added.
+       * Decreasing quantity:
+       * extra units are removed
+       * from the end.
        *
-       * If decreased:
-       * units are removed from the end.
-       *
-       * Earlier images remain.
+       * Existing images are preserved.
        */
+
       syncPrintUnitsToQuantity(
         item
       );
 
-      await cart.save();
+      /*
+       * Revalidate product and price.
+       *
+       * This prevents stale cart
+       * pricing from being trusted.
+       */
 
       const {
-        subtotal,
-        itemCount,
+        product,
+        validatedSelections,
+        price,
       } =
-        calculateCartTotals(
+        await validateCartItem(
+          item.productId.toString(),
+          item.selections
+        );
+
+      item.price =
+        price;
+
+      item.name =
+        product.name;
+
+      item.image =
+        product.images?.[0] ||
+        "";
+
+      item.selections =
+        validatedSelections;
+
+      await cart.save();
+
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
-          quantity >
-          oldQuantity
-            ? "Quantity increased. New product requires its own print image."
-            : "Quantity updated.",
+          "Cart quantity updated.",
 
         cart: {
+          ...cartData,
+
           items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
+            safeItems,
         },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Update Quantity Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        400
+      ).json({
         success: false,
 
         message:
+          error.message ||
           "Failed to update quantity.",
       });
     }
@@ -1331,7 +1535,10 @@ export const updateItemQuantity =
 ============================================================ */
 
 export const removeItem =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
@@ -1346,7 +1553,9 @@ export const removeItem =
         });
 
       if (!cart) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -1368,7 +1577,9 @@ export const removeItem =
         cart.items.length ===
         originalLength
       ) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -1378,36 +1589,47 @@ export const removeItem =
 
       await cart.save();
 
-      const {
-        subtotal,
-        itemCount,
-      } =
-        calculateCartTotals(
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
           "Item removed.",
 
         cart: {
+          ...cartData,
+
           items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
+            safeItems,
         },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Remove Item Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        500
+      ).json({
         success: false,
 
         message:
@@ -1421,46 +1643,31 @@ export const removeItem =
 ============================================================ */
 
 export const clearCart =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
 
-      const cart =
-        await Cart.findOneAndUpdate(
-          {
-            userId,
-          },
-
-          {
-            $set: {
-              items: [],
-            },
-          },
-
-          {
-            new: true,
-          }
-        );
-
-      if (!cart) {
-        return res.status(200).json({
-          success: true,
-
-          message:
-            "Cart cleared.",
-
-          cart: {
+      await Cart.findOneAndUpdate(
+        {
+          userId,
+        },
+        {
+          $set: {
             items: [],
-
-            subtotal: 0,
-
-            itemCount: 0,
           },
-        });
-      }
+        },
+        {
+          new: true,
+        }
+      );
 
-      return res.status(200).json({
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
@@ -1471,16 +1678,24 @@ export const clearCart =
 
           subtotal: 0,
 
+          shippingCharge: 0,
+
+          total: 0,
+
           itemCount: 0,
         },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Clear Cart Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        500
+      ).json({
         success: false,
 
         message:
@@ -1494,7 +1709,10 @@ export const clearCart =
 ============================================================ */
 
 export const mergeCart =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
@@ -1504,9 +1722,13 @@ export const mergeCart =
       } = req.body;
 
       if (
-        !Array.isArray(items)
+        !Array.isArray(
+          items
+        )
       ) {
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
@@ -1527,25 +1749,26 @@ export const mergeCart =
           });
       }
 
-      const messages = [];
+      const messages =
+        [];
 
       /*
-       * Merge every guest item.
+       * Merge each guest cart
+       * item independently.
        */
+
       for (
-        const guestItem of items
+        const guestItem of
+          items
       ) {
         try {
           const guestQuantity =
-            Number(
+            normalizeQuantity(
               guestItem?.quantity
             );
 
           if (
-            !Number.isInteger(
-              guestQuantity
-            ) ||
-            guestQuantity < 1
+            !guestQuantity
           ) {
             continue;
           }
@@ -1553,6 +1776,7 @@ export const mergeCart =
           /*
            * Validate product again.
            */
+
           const {
             product,
             validatedSelections,
@@ -1577,8 +1801,10 @@ export const mergeCart =
             );
 
           /*
-           * Sanitize guest print units.
+           * Sanitize guest print
+           * units.
            */
+
           let guestUnits =
             Array.isArray(
               guestItem.printUnits
@@ -1633,9 +1859,11 @@ export const mergeCart =
               : [];
 
           /*
-           * If guest units are missing,
-           * create empty units.
+           * Ensure exactly one
+           * physical unit per
+           * quantity.
            */
+
           while (
             guestUnits.length <
             guestQuantity
@@ -1648,10 +1876,10 @@ export const mergeCart =
           /*
            * Existing server cart item.
            */
-          if (existingItem) {
-            /*
-             * Preserve existing images.
-             */
+
+          if (
+            existingItem
+          ) {
             syncPrintUnitsToQuantity(
               existingItem
             );
@@ -1662,8 +1890,11 @@ export const mergeCart =
               );
 
             const newQuantity =
-              oldQuantity +
-              guestQuantity;
+              Math.min(
+                MAX_CART_QUANTITY,
+                oldQuantity +
+                  guestQuantity
+              );
 
             existingItem.quantity =
               newQuantity;
@@ -1682,35 +1913,67 @@ export const mergeCart =
               validatedSelections;
 
             /*
-             * Add new empty units.
+             * Preserve existing units
+             * and create new units.
              */
+
             syncPrintUnitsToQuantity(
               existingItem
             );
 
             /*
-             * Copy guest customization
-             * into the newly-added units.
+             * Guest images belong to
+             * the newly-added physical
+             * products.
              */
+
+            const oldUnitCount =
+              Math.min(
+                oldQuantity,
+                existingItem
+                  .printUnits
+                  .length
+              );
+
             for (
-              let i = 0;
-              i <
+              let index = 0;
+              index <
                 guestUnits.length &&
-              oldQuantity + i <
+              oldUnitCount +
+                index <
                 existingItem
                   .printUnits
                   .length;
-              i++
+              index++
             ) {
-              existingItem.printUnits[
-                oldQuantity + i
-              ] =
-                guestUnits[i];
+              const guestUnit =
+                guestUnits[
+                  index
+                ];
+
+              const targetUnit =
+                existingItem
+                  .printUnits[
+                  oldUnitCount +
+                    index
+                ];
+
+              if (
+                targetUnit &&
+                guestUnit
+              ) {
+                targetUnit.images =
+                  guestUnit.images;
+              }
             }
           } else {
             /*
              * New server cart item.
              */
+
+            const limitedQuantity =
+              guestQuantity;
+
             cart.items.push({
               productId:
                 product._id,
@@ -1727,20 +1990,27 @@ export const mergeCart =
               price,
 
               quantity:
-                guestQuantity,
+                limitedQuantity,
 
               selections:
                 validatedSelections,
 
               printUnits:
-                guestUnits,
+                guestUnits.slice(
+                  0,
+                  limitedQuantity
+                ),
             });
           }
-        } catch (error) {
-          console.warn(
-            `Guest cart merge skipped for product ${guestItem?.productId}:`,
-            error.message
-          );
+        } catch (
+          error
+        ) {
+          /*
+           * Do not let one invalid
+           * guest item prevent the
+           * rest of the cart from
+           * merging.
+           */
 
           messages.push(
             error.message ||
@@ -1751,38 +2021,49 @@ export const mergeCart =
 
       await cart.save();
 
-      const {
-        subtotal,
-        itemCount,
-      } =
-        calculateCartTotals(
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
           "Cart merged successfully.",
 
-        cart: {
-          items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
-        },
-
         messages,
+
+        cart: {
+          ...cartData,
+
+          items:
+            safeItems,
+        },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Merge Cart Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        500
+      ).json({
         success: false,
 
         message:
@@ -1796,26 +2077,34 @@ export const mergeCart =
 ============================================================ */
 
 /*
- * POST /api/cart/print-image
+ * POST
+ * /api/cart/print-image
  *
- * FormData:
+ * The multer middleware before
+ * this controller already enforces:
  *
- * image = File
+ * - image only
+ * - 10MB maximum
  *
- * This uploads one image to Cloudinary.
+ * This endpoint uploads ONE image.
  *
- * It does not attach the image to
- * a specific product yet.
- *
- * The frontend does that through
- * savePrintCustomization.
+ * The 6-image-per-physical-product
+ * rule is enforced when the frontend
+ * saves print customization.
  */
 
 export const uploadPrintImage =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
-      if (!req.file) {
-        return res.status(400).json({
+      if (
+        !req.file
+      ) {
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
@@ -1828,7 +2117,9 @@ export const uploadPrintImage =
           "image/"
         )
       ) {
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
@@ -1837,8 +2128,28 @@ export const uploadPrintImage =
       }
 
       /*
-       * Your existing multer middleware
-       * already limits image size.
+       * Extra controller-side
+       * 10MB protection.
+       *
+       * Multer also enforces this.
+       */
+
+      if (
+        req.file.size >
+        10 * 1024 * 1024
+      ) {
+        return res.status(
+          400
+        ).json({
+          success: false,
+
+          message:
+            "Image must be 10MB or smaller.",
+        });
+      }
+
+      /*
+       * Upload to Cloudinary.
        */
 
       const result =
@@ -1861,7 +2172,9 @@ export const uploadPrintImage =
                   error,
                   uploaded
                 ) => {
-                  if (error) {
+                  if (
+                    error
+                  ) {
                     reject(
                       error
                     );
@@ -1873,11 +2186,6 @@ export const uploadPrintImage =
                 }
               );
 
-            /*
-             * Same Cloudinary stream
-             * approach as your existing
-             * working product upload.
-             */
             uploadStream.end(
               req.file.buffer
             );
@@ -1888,7 +2196,9 @@ export const uploadPrintImage =
         !result?.secure_url ||
         !result?.public_id
       ) {
-        return res.status(500).json({
+        return res.status(
+          500
+        ).json({
           success: false,
 
           message:
@@ -1896,7 +2206,19 @@ export const uploadPrintImage =
         });
       }
 
-      return res.status(200).json({
+      /*
+       * Only return image information.
+       *
+       * Do NOT return:
+       *
+       * product weight
+       * total weight
+       * shipping information
+       */
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
@@ -1910,13 +2232,17 @@ export const uploadPrintImage =
             result.public_id,
         },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
-        "PRINT IMAGE UPLOAD ERROR:",
+        "Print Image Upload Error:",
         error
       );
 
-      return res.status(500).json({
+      return res.status(
+        500
+      ).json({
         success: false,
 
         message:
@@ -1937,20 +2263,24 @@ export const uploadPrintImage =
  *
  * quantity = 1
  *   -> exactly 1 printUnit
- *   -> minimum 1 image
- *   -> maximum 3 images
+ *   -> 1–6 images
  *
  * quantity = 2
  *   -> exactly 2 printUnits
- *   -> each needs 1–3 images
+ *   -> each has 1–6 images
  *
  * quantity = 3
  *   -> exactly 3 printUnits
- *   -> each needs 1–3 images
+ *   -> each has 1–6 images
+ *
+ * etc.
  */
 
 export const updatePrintCustomization =
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
     try {
       const userId =
         req.auth.userId;
@@ -1963,15 +2293,14 @@ export const updatePrintCustomization =
         printUnits,
       } = req.body;
 
-      /*
-       * Validate request body.
-       */
       if (
         !Array.isArray(
           printUnits
         )
       ) {
-        return res.status(400).json({
+        return res.status(
+          400
+        ).json({
           success: false,
 
           message:
@@ -1985,7 +2314,9 @@ export const updatePrintCustomization =
         });
 
       if (!cart) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -1993,9 +2324,6 @@ export const updatePrintCustomization =
         });
       }
 
-      /*
-       * Find exact cart line.
-       */
       const item =
         cart.items.find(
           (cartItem) =>
@@ -2004,7 +2332,9 @@ export const updatePrintCustomization =
         );
 
       if (!item) {
-        return res.status(404).json({
+        return res.status(
+          404
+        ).json({
           success: false,
 
           message:
@@ -2013,53 +2343,73 @@ export const updatePrintCustomization =
       }
 
       /*
-       * Validate 1–3 images for
-       * every physical product.
+       * Exactly quantity physical
+       * units.
+       *
+       * Every unit:
+       *
+       * minimum 1 image
+       * maximum 6 images
        */
+
       const validatedUnits =
         validatePrintUnits(
           printUnits,
           item.quantity
         );
 
-      /*
-       * Save customization.
-       */
       item.printUnits =
         validatedUnits;
 
       await cart.save();
 
-      const {
-        subtotal,
-        itemCount,
-      } =
-        calculateCartTotals(
+      /*
+       * Reattach products so
+       * shipping is calculated
+       * correctly.
+       */
+
+      const itemsWithProducts =
+        await attachProducts(
           cart.items
         );
 
-      return res.status(200).json({
+      const cartData =
+        buildCartResponse(
+          itemsWithProducts
+        );
+
+      const safeItems =
+        sanitizeCartItems(
+          cartData.items
+        );
+
+      return res.status(
+        200
+      ).json({
         success: true,
 
         message:
           "Print images saved successfully.",
 
         cart: {
+          ...cartData,
+
           items:
-            cart.items,
-
-          subtotal,
-
-          itemCount,
+            safeItems,
         },
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       console.error(
         "Update Print Customization Error:",
         error
       );
 
-      return res.status(400).json({
+      return res.status(
+        400
+      ).json({
         success: false,
 
         message:

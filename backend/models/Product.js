@@ -57,16 +57,6 @@ const productOrderSelectionSchema = new mongoose.Schema(
 
 // ============================================================
 // PRODUCT VARIANT
-//
-// Example:
-//
-// Size: M
-// Color: Black
-// Original Price: ₹1,999
-// Selling Price: ₹486
-// SKU: TS-BLK-M
-// Stock: 20
-// Low Stock: 5
 // ============================================================
 
 const productVariantSchema = new mongoose.Schema(
@@ -82,13 +72,6 @@ const productVariantSchema = new mongoose.Schema(
 
         // ------------------------------------------------------
         // ORIGINAL / MRP PRICE
-        //
-        // Example:
-        // originalPrice = 1999
-        // price         = 486
-        //
-        // Discount percentage will be calculated on frontend
-        // and backend from these two values.
         // ------------------------------------------------------
 
         originalPrice: {
@@ -124,7 +107,7 @@ const productVariantSchema = new mongoose.Schema(
         },
 
         // ------------------------------------------------------
-        // CURRENT AVAILABLE STOCK
+        // STOCK
         // ------------------------------------------------------
 
         stock: {
@@ -143,7 +126,7 @@ const productVariantSchema = new mongoose.Schema(
         },
 
         // ------------------------------------------------------
-        // LOW STOCK WARNING
+        // LOW STOCK THRESHOLD
         // ------------------------------------------------------
 
         lowStockThreshold: {
@@ -227,22 +210,41 @@ const productSchema = new mongoose.Schema(
             default: "",
         },
 
-        // ------------------------------------------------------
-        // ORIGINAL / MRP PRICE
+        // ======================================================
+        // INTERNAL SHIPPING WEIGHT
         //
-        // Used for displaying discounts.
+        // Stored in grams.
         //
         // Example:
+        // 100  = 100 grams
+        // 250  = 250 grams
+        // 500  = 500 grams
         //
-        // originalPrice: 1999
-        // price: 486
+        // This is ONLY used internally for shipping calculation.
+        // It should NOT be displayed to customers.
         //
-        // Website:
-        //
-        // ↓76%  ₹1,999  ₹486
-        //
-        // If originalPrice is null or equal to price,
-        // no discount will be displayed.
+        // Default 100 keeps older products valid.
+        // Admin should update existing products with their
+        // actual shipping weight.
+        // ======================================================
+
+        weight: {
+            type: Number,
+            required: true,
+            min: [
+                1,
+                "Product weight must be greater than 0 grams",
+            ],
+            validate: {
+                validator: Number.isInteger,
+                message:
+                    "Product weight must be a whole number of grams",
+            },
+            default: 100,
+        },
+
+        // ------------------------------------------------------
+        // ORIGINAL / MRP PRICE
         // ------------------------------------------------------
 
         originalPrice: {
@@ -256,8 +258,6 @@ const productSchema = new mongoose.Schema(
 
         // ------------------------------------------------------
         // CURRENT SELLING PRICE
-        //
-        // Used for actual cart/order calculations.
         // ------------------------------------------------------
 
         price: {
@@ -284,8 +284,6 @@ const productSchema = new mongoose.Schema(
 
         // ------------------------------------------------------
         // FIXED PRODUCT STOCK
-        //
-        // Used only when pricingType = "fixed".
         // ------------------------------------------------------
 
         stock: {
