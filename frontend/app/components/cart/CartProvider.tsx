@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { useApi } from "../../lib/api";
+
 /* ============================================================
    TYPES
 ============================================================ */
@@ -31,6 +33,7 @@ export interface CartProduct {
   image?: string;
   images?: string[];
   slug?: string;
+
   [key: string]: unknown;
 }
 
@@ -38,16 +41,21 @@ export interface CartItem {
   _id: string;
   productId: string;
   itemKey: string;
+
   name: string;
   image: string;
+
   price: number;
   quantity: number;
+
   selections: Record<string, string>;
+
   printUnits: PrintUnit[];
 }
 
 export interface CartData {
   items: CartItem[];
+
   subtotal: number;
   shippingCharge: number;
   total: number;
@@ -110,99 +118,6 @@ const CartContext =
   );
 
 /* ============================================================
-   API BASE URL
-============================================================ */
-
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000"
-).replace(/\/+$/, "");
-
-/* ============================================================
-   API REQUEST
-============================================================ */
-
-async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const response = await fetch(
-    `${API_BASE_URL}${path}`,
-    {
-      ...options,
-
-      credentials: "include",
-
-      headers: {
-        ...(options.body instanceof FormData
-          ? {}
-          : {
-              "Content-Type":
-                "application/json",
-            }),
-
-        ...(options.headers || {}),
-      },
-
-      cache: "no-store",
-    }
-  );
-
-  const responseText =
-    await response.text();
-
-  let data: any = null;
-
-  if (responseText) {
-    try {
-      data =
-        JSON.parse(responseText);
-    } catch {
-      data = {
-        message: responseText,
-      };
-    }
-  }
-
-  if (!response.ok) {
-    console.error(
-      "========================================"
-    );
-
-    console.error(
-      "CART API ERROR"
-    );
-
-    console.error(
-      "Path:",
-      path
-    );
-
-    console.error(
-      "Status:",
-      response.status
-    );
-
-    console.error(
-      "Response:",
-      data
-    );
-
-    console.error(
-      "========================================"
-    );
-
-    throw new Error(
-      data?.message ||
-        data?.error ||
-        `Request failed with status ${response.status}.`
-    );
-  }
-
-  return data as T;
-}
-
-/* ============================================================
    NORMALIZE PRINT UNIT
 ============================================================ */
 
@@ -216,14 +131,12 @@ function normalizePrintUnit(
           .slice(0, 6)
           .filter(
             (image: any) =>
-              image?.url &&
-              image?.publicId
+              Boolean(image?.url) &&
+              Boolean(image?.publicId)
           )
           .map(
             (image: any) => ({
-              url: String(
-                image.url
-              ),
+              url: String(image.url),
               publicId: String(
                 image.publicId
               ),
@@ -233,8 +146,7 @@ function normalizePrintUnit(
 
   return {
     unitId:
-      typeof unit?.unitId ===
-        "string" &&
+      typeof unit?.unitId === "string" &&
       unit.unitId.trim()
         ? unit.unitId
         : `unit_${index}_${Date.now()}`,
@@ -255,10 +167,8 @@ function normalizeCartItem(
     Number(item?.quantity) || 1
   );
 
-  let printUnits =
-    Array.isArray(
-      item?.printUnits
-    )
+  let printUnits: PrintUnit[] =
+    Array.isArray(item?.printUnits)
       ? item.printUnits.map(
           (
             unit: any,
@@ -270,6 +180,12 @@ function normalizeCartItem(
             )
         )
       : [];
+
+  /*
+   * Keep exactly one logical
+   * print unit for every physical
+   * product.
+   */
 
   if (
     printUnits.length >
@@ -313,12 +229,8 @@ function normalizeCartItem(
             )
             .filter(
               ([key, value]) =>
-                Boolean(
-                  key.trim()
-                ) &&
-                Boolean(
-                  value.trim()
-                )
+                key.trim() !== "" &&
+                value.trim() !== ""
             )
         )
       : {};
@@ -347,13 +259,9 @@ function normalizeCartItem(
 
     price:
       Number.isFinite(
-        Number(
-          item?.price
-        )
+        Number(item?.price)
       )
-        ? Number(
-            item.price
-          )
+        ? Number(item.price)
         : 0,
 
     quantity,
@@ -365,12 +273,27 @@ function normalizeCartItem(
 }
 
 /* ============================================================
-   NORMALIZE CART
+   NORMALIZE CART RESPONSE
 ============================================================ */
 
 function normalizeCart(
   data: any
 ): CartData {
+  /*
+   * Backend may return:
+   *
+   * {
+   *   success: true,
+   *   cart: {...}
+   * }
+   *
+   * or directly:
+   *
+   * {
+   *   items: [...]
+   * }
+   */
+
   const rawCart =
     data?.cart ||
     data ||
@@ -385,26 +308,12 @@ function normalizeCart(
         )
       : [];
 
-  const subtotal = Number(
-    rawCart.subtotal
-  );
-
-  const shippingCharge =
-    Number(
-      rawCart.shippingCharge
-    );
-
-  const total = Number(
-    rawCart.total
-  );
-
-  const itemCount = Number(
-    rawCart.itemCount
-  );
-
   const calculatedSubtotal =
     items.reduce(
-      (sum, item) =>
+      (
+        sum,
+        item
+      ) =>
         sum +
         item.price *
           item.quantity,
@@ -413,49 +322,74 @@ function normalizeCart(
 
   const calculatedItemCount =
     items.reduce(
-      (sum, item) =>
+      (
+        sum,
+        item
+      ) =>
         sum +
         item.quantity,
       0
     );
 
-  const safeSubtotal =
+  const backendSubtotal =
+    Number(
+      rawCart.subtotal
+    );
+
+  const backendShipping =
+    Number(
+      rawCart.shippingCharge
+    );
+
+  const backendTotal =
+    Number(
+      rawCart.total
+    );
+
+  const backendItemCount =
+    Number(
+      rawCart.itemCount
+    );
+
+  const subtotal =
     Number.isFinite(
-      subtotal
+      backendSubtotal
     )
-      ? subtotal
+      ? backendSubtotal
       : calculatedSubtotal;
 
-  const safeShipping =
+  const shippingCharge =
     Number.isFinite(
-      shippingCharge
+      backendShipping
     )
-      ? shippingCharge
+      ? backendShipping
       : 0;
+
+  const total =
+    Number.isFinite(
+      backendTotal
+    )
+      ? backendTotal
+      : subtotal +
+        shippingCharge;
+
+  const itemCount =
+    Number.isFinite(
+      backendItemCount
+    )
+      ? backendItemCount
+      : calculatedItemCount;
 
   return {
     items,
 
-    subtotal:
-      safeSubtotal,
+    subtotal,
 
-    shippingCharge:
-      safeShipping,
+    shippingCharge,
 
-    total:
-      Number.isFinite(
-        total
-      )
-        ? total
-        : safeSubtotal +
-          safeShipping,
+    total,
 
-    itemCount:
-      Number.isFinite(
-        itemCount
-      )
-        ? itemCount
-        : calculatedItemCount,
+    itemCount,
   };
 }
 
@@ -474,6 +408,22 @@ interface CartProviderProps {
 export function CartProvider({
   children,
 }: CartProviderProps) {
+  /*
+   * IMPORTANT:
+   *
+   * Use the application's existing
+   * authenticated API layer.
+   *
+   * This automatically:
+   *
+   * - gets Clerk token
+   * - sends Authorization header
+   * - uses NEXT_PUBLIC_API_URL
+   * - handles backend errors
+   */
+
+  const api = useApi();
+
   const [cart, setCart] =
     useState<CartData>({
       items: [],
@@ -504,7 +454,7 @@ export function CartProvider({
         setError(null);
 
         const data =
-          await apiRequest<any>(
+          await api.get<any>(
             "/api/cart"
           );
 
@@ -520,14 +470,19 @@ export function CartProvider({
             ? requestError.message
             : "Failed to load cart.";
 
+        console.error(
+          "Cart refresh error:",
+          requestError
+        );
+
         setError(message);
       } finally {
         setLoading(false);
       }
-    }, []);
+    }, [api]);
 
   /* ==========================================================
-     INITIAL LOAD
+     INITIAL CART LOAD
   ========================================================== */
 
   useEffect(() => {
@@ -539,7 +494,7 @@ export function CartProvider({
           setError(null);
 
           const data =
-            await apiRequest<any>(
+            await api.get<any>(
               "/api/cart"
             );
 
@@ -554,12 +509,18 @@ export function CartProvider({
           requestError
         ) {
           if (!cancelled) {
-            setError(
+            const message =
               requestError instanceof
-                Error
+              Error
                 ? requestError.message
-                : "Failed to load cart."
+                : "Failed to load cart.";
+
+            console.error(
+              "Initial cart error:",
+              requestError
             );
+
+            setError(message);
           }
         } finally {
           if (!cancelled) {
@@ -573,7 +534,7 @@ export function CartProvider({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [api]);
 
   /* ==========================================================
      ADD TO CART
@@ -609,6 +570,17 @@ export function CartProvider({
               ? quantity
               : 1;
 
+          /*
+           * Clean selections.
+           *
+           * Example:
+           *
+           * {
+           *   Size: "M",
+           *   Color: "Black"
+           * }
+           */
+
           const cleanSelections =
             Object.fromEntries(
               Object.entries(
@@ -619,7 +591,10 @@ export function CartProvider({
                     key,
                     value,
                   ]) => [
-                    String(key).trim(),
+                    String(
+                      key
+                    ).trim(),
+
                     String(
                       value ?? ""
                     ).trim(),
@@ -627,20 +602,12 @@ export function CartProvider({
                 )
                 .filter(
                   ([key, value]) =>
-                    Boolean(key) &&
-                    Boolean(value)
+                    key.length >
+                      0 &&
+                    value.length >
+                      0
                 )
             );
-
-          /*
-           * IMPORTANT:
-           *
-           * Do NOT send the frontend
-           * price to the backend.
-           *
-           * Backend calculates the
-           * trusted price from Product.
-           */
 
           const payload = {
             productId:
@@ -660,18 +627,20 @@ export function CartProvider({
             payload
           );
 
-          const data =
-            await apiRequest<any>(
-              "/api/cart/items",
-              {
-                method:
-                  "POST",
+          /*
+           * IMPORTANT:
+           *
+           * Never send price from
+           * frontend.
+           *
+           * Backend determines the
+           * trusted price/variant.
+           */
 
-                body:
-                  JSON.stringify(
-                    payload
-                  ),
-              }
+          const data =
+            await api.post<any>(
+              "/api/cart/items",
+              payload
             );
 
           setCart(
@@ -688,19 +657,19 @@ export function CartProvider({
               ? requestError.message
               : "Failed to add item to cart.";
 
-          setError(message);
-
           console.error(
-            "Failed to add product to cart:",
-            message
+            "Add to cart error:",
+            requestError
           );
+
+          setError(message);
 
           return false;
         } finally {
           setUpdating(false);
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
@@ -728,18 +697,12 @@ export function CartProvider({
           setError(null);
 
           const data =
-            await apiRequest<any>(
+            await api.patch<any>(
               `/api/cart/items/${encodeURIComponent(
                 itemId
               )}`,
               {
-                method:
-                  "PATCH",
-
-                body:
-                  JSON.stringify({
-                    quantity,
-                  }),
+                quantity,
               }
             );
 
@@ -757,6 +720,11 @@ export function CartProvider({
               ? requestError.message
               : "Failed to update quantity.";
 
+          console.error(
+            "Update quantity error:",
+            requestError
+          );
+
           setError(message);
 
           return false;
@@ -764,7 +732,7 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
@@ -785,14 +753,10 @@ export function CartProvider({
           setError(null);
 
           const data =
-            await apiRequest<any>(
+            await api.delete<any>(
               `/api/cart/items/${encodeURIComponent(
                 itemId
-              )}`,
-              {
-                method:
-                  "DELETE",
-              }
+              )}`
             );
 
           setCart(
@@ -809,6 +773,11 @@ export function CartProvider({
               ? requestError.message
               : "Failed to remove item.";
 
+          console.error(
+            "Remove cart item error:",
+            requestError
+          );
+
           setError(message);
 
           return false;
@@ -816,7 +785,7 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
@@ -831,12 +800,8 @@ export function CartProvider({
           setError(null);
 
           const data =
-            await apiRequest<any>(
-              "/api/cart",
-              {
-                method:
-                  "DELETE",
-              }
+            await api.delete<any>(
+              "/api/cart"
             );
 
           setCart(
@@ -853,6 +818,11 @@ export function CartProvider({
               ? requestError.message
               : "Failed to clear cart.";
 
+          console.error(
+            "Clear cart error:",
+            requestError
+          );
+
           setError(message);
 
           return false;
@@ -860,7 +830,7 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
@@ -882,12 +852,22 @@ export function CartProvider({
               printUnits
             )
               ? printUnits.map(
-                  (unit) => ({
+                  (
+                    unit,
+                    index
+                  ) => ({
                     unitId:
                       String(
                         unit?.unitId ||
-                          ""
+                          `unit_${index}`
                       ),
+
+                    /*
+                     * Current requirement:
+                     *
+                     * Maximum 6 images
+                     * per physical product.
+                     */
 
                     images:
                       Array.isArray(
@@ -916,6 +896,7 @@ export function CartProvider({
                                 url: String(
                                   image.url
                                 ),
+
                                 publicId:
                                   String(
                                     image.publicId
@@ -928,19 +909,13 @@ export function CartProvider({
               : [];
 
           const data =
-            await apiRequest<any>(
+            await api.patch<any>(
               `/api/cart/items/${encodeURIComponent(
                 itemId
               )}/print-customization`,
               {
-                method:
-                  "PATCH",
-
-                body:
-                  JSON.stringify({
-                    printUnits:
-                      cleanedUnits,
-                  }),
+                printUnits:
+                  cleanedUnits,
               }
             );
 
@@ -958,6 +933,11 @@ export function CartProvider({
               ? requestError.message
               : "Failed to save print customization.";
 
+          console.error(
+            "Print customization error:",
+            requestError
+          );
+
           setError(message);
 
           return false;
@@ -965,7 +945,7 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
@@ -999,6 +979,13 @@ export function CartProvider({
             );
           }
 
+          /*
+           * Frontend protection.
+           *
+           * Backend multer should
+           * ALSO enforce 10 MB.
+           */
+
           if (
             file.size >
             10 *
@@ -1019,15 +1006,9 @@ export function CartProvider({
           );
 
           const data =
-            await apiRequest<any>(
+            await api.post<any>(
               "/api/cart/print-image",
-              {
-                method:
-                  "POST",
-
-                body:
-                  formData,
-              }
+              formData
             );
 
           if (
@@ -1057,12 +1038,17 @@ export function CartProvider({
               ? requestError.message
               : "Failed to upload image.";
 
+          console.error(
+            "Print image upload error:",
+            requestError
+          );
+
           setError(message);
 
           return null;
         }
       },
-      []
+      [api]
     );
 
   /* ==========================================================
