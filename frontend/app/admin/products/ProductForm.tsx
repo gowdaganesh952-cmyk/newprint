@@ -291,6 +291,22 @@ export default function ProductForm({
   );
 
   // ==========================================================
+  // CLEAN UP LOCAL IMAGE PREVIEWS
+  // ==========================================================
+
+  useEffect(() => {
+    return () => {
+      images.forEach((image) => {
+        if (image.file) {
+          URL.revokeObjectURL(
+            image.previewUrl
+          );
+        }
+      });
+    };
+  }, [images]);
+
+  // ==========================================================
   // PRODUCT OPTIONS
   // ==========================================================
 
@@ -383,39 +399,71 @@ export default function ProductForm({
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
-    if (!e.target.files) return;
+    const fileList = e.target.files;
 
-    const selectedFiles = Array.from(e.target.files);
+    if (!fileList) return;
 
-    if (images.length + selectedFiles.length > 10) {
-      alert("Maximum 10 images allowed.");
+    const selectedFiles = Array.from(fileList);
+
+    if (selectedFiles.length === 0) {
+      e.target.value = "";
       return;
     }
 
-    const newImages: ImagePreview[] =
-      selectedFiles.map((file) => ({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      }));
+    if (
+      images.length +
+        selectedFiles.length >
+      10
+    ) {
+      alert("Maximum 10 images allowed.");
+      e.target.value = "";
+      return;
+    }
 
-    setImages((previous) => [
-      ...previous,
-      ...newImages,
-    ]);
+    const validFiles = selectedFiles.filter(
+      (file) =>
+        file.type.startsWith("image/")
+    );
+
+    if (
+      validFiles.length !==
+      selectedFiles.length
+    ) {
+      alert("Only image files are allowed.");
+    }
+
+    if (validFiles.length > 0) {
+      const newImages: ImagePreview[] =
+        validFiles.map((file) => ({
+          file,
+          previewUrl:
+            URL.createObjectURL(file),
+        }));
+
+      setImages((previous) => [
+        ...previous,
+        ...newImages,
+      ]);
+    }
 
     e.target.value = "";
   };
 
   const removeImage = (index: number) => {
-    if (images[index]?.file) {
-      URL.revokeObjectURL(images[index].previewUrl);
-    }
+    setImages((previous) => {
+      const image = previous[index];
 
-    setImages((previous) =>
-      previous.filter(
-        (_, imageIndex) => imageIndex !== index
-      )
-    );
+      if (image?.file) {
+        URL.revokeObjectURL(
+          image.previewUrl
+        );
+      }
+
+      return previous.filter(
+        (_, imageIndex) =>
+          imageIndex !== index
+      );
+    });
   };
 
   const moveImage = (
@@ -1271,16 +1319,44 @@ export default function ProductForm({
 
     // ========================================================
     // IMAGES
+    //
+    // Preserve the EXACT order shown in the editor.
+    //
+    // Existing images are represented by their URL.
+    // New images use stable placeholders:
+    // __NEW_IMAGE_0__, __NEW_IMAGE_1__, ...
+    //
+    // The backend uploads new files and replaces the
+    // placeholders with the resulting Cloudinary URLs.
     // ========================================================
+
+    const imageOrder: string[] = [];
+    let newImageIndex = 0;
 
     images.forEach((image) => {
       if (image.file) {
+        const placeholder =
+          `__NEW_IMAGE_${newImageIndex}__`;
+
+        imageOrder.push(placeholder);
+
         formData.append(
           "images",
           image.file
         );
+
+        newImageIndex += 1;
+      } else {
+        imageOrder.push(image.previewUrl);
       }
     });
+
+    if (isEditing) {
+      formData.append(
+        "imageOrder",
+        JSON.stringify(imageOrder)
+      );
+    }
 
     // ========================================================
     // API

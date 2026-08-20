@@ -43,7 +43,115 @@ const uploadStream = (buffer) => {
         stream.end(buffer);
     });
 };
+// ============================================================
+// CLOUDINARY PUBLIC ID
+// ============================================================
 
+const getCloudinaryPublicId = (url) => {
+    if (
+        typeof url !== "string" ||
+        !url.includes("res.cloudinary.com")
+    ) {
+        return null;
+    }
+
+    try {
+        const parsedUrl = new URL(url);
+
+        const pathname =
+            parsedUrl.pathname;
+
+        const uploadMarker =
+            "/image/upload/";
+
+        const markerIndex =
+            pathname.indexOf(
+                uploadMarker
+            );
+
+        if (markerIndex === -1) {
+            return null;
+        }
+
+        let publicPath =
+            pathname.slice(
+                markerIndex +
+                    uploadMarker.length
+            );
+
+        const segments =
+            publicPath.split("/");
+
+        // Remove Cloudinary version.
+        const versionIndex =
+            segments.findIndex(
+                (segment) =>
+                    /^v\d+$/.test(
+                        segment
+                    )
+            );
+
+        if (versionIndex !== -1) {
+            publicPath =
+                segments
+                    .slice(
+                        versionIndex + 1
+                    )
+                    .join("/");
+        }
+
+        // Remove extension.
+        publicPath =
+            publicPath.replace(
+                /\.[^/.]+$/,
+                ""
+            );
+
+        return decodeURIComponent(
+            publicPath
+        );
+    } catch {
+        return null;
+    }
+};
+
+
+// ============================================================
+// DELETE CLOUDINARY IMAGE
+// ============================================================
+
+const deleteCloudinaryImage = async (
+    url
+) => {
+    const publicId =
+        getCloudinaryPublicId(
+            url
+        );
+
+    if (!publicId) {
+        return;
+    }
+
+    try {
+        await cloudinary.uploader.destroy(
+            publicId,
+            {
+                resource_type:
+                    "image",
+
+                invalidate:
+                    true,
+            }
+        );
+    } catch (error) {
+        // Cloudinary cleanup should never
+        // make the product update fail.
+        console.error(
+            "CLOUDINARY IMAGE DELETE WARNING:",
+            error
+        );
+    }
+};
 // ============================================================
 // HELPER: PARSE JSON FIELD
 // ============================================================
@@ -1507,11 +1615,21 @@ pricingType,
 // @access Admin
 // ============================================================
 
+// ============================================================
+// UPDATE PRODUCT
+// @route PUT /api/products/:id
+// @access Admin
+// ============================================================
+
 export const updateProduct = async (
     req,
     res
 ) => {
     try {
+        // ====================================================
+        // FIND PRODUCT
+        // ====================================================
+
         const product =
             await Product.findById(
                 req.params.id
@@ -1527,6 +1645,10 @@ export const updateProduct = async (
                 });
         }
 
+        // ====================================================
+        // BODY
+        // ====================================================
+
         const {
             category,
             name,
@@ -1534,20 +1656,27 @@ export const updateProduct = async (
             status,
         } = req.body;
 
-       let {
-    slug,
-    price,
-    originalPrice,
-    pricingType,
-    featured,
-    options,
-    orderSelections,
-    variants,
-    existingImages,
-    stock,
-    lowStockThreshold,
-    weight,
-} = req.body;
+        let {
+            slug,
+            price,
+            originalPrice,
+            pricingType,
+            featured,
+            options,
+            orderSelections,
+            variants,
+
+            // Old frontend compatibility
+            existingImages,
+
+            // NEW FRONTEND IMAGE ORDER
+            imageOrder,
+
+            stock,
+            lowStockThreshold,
+            weight,
+        } = req.body;
+
         // ====================================================
         // CATEGORY
         // ====================================================
@@ -1561,8 +1690,19 @@ export const updateProduct = async (
         // ====================================================
 
         const finalName =
-            name?.trim() ||
-            product.name;
+            name !== undefined
+                ? name.trim()
+                : product.name;
+
+        if (!finalName) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        "Product name is required",
+                });
+        }
 
         // ====================================================
         // SLUG
@@ -1579,7 +1719,7 @@ export const updateProduct = async (
                     slug
                 );
         } else if (
-            name &&
+            name !== undefined &&
             name.trim() !==
                 product.name
         ) {
@@ -1599,9 +1739,14 @@ export const updateProduct = async (
                 });
         }
 
+        // ====================================================
+        // SLUG DUPLICATE CHECK
+        // ====================================================
+
         const slugConflict =
             await Product.findOne({
                 slug: finalSlug,
+
                 _id: {
                     $ne:
                         req.params.id,
@@ -1626,41 +1771,6 @@ export const updateProduct = async (
             pricingType ||
             product.pricingType ||
             "fixed";
-            // ====================================================
-// SHIPPING WEIGHT
-//
-// Keep the existing product weight when editing
-// unless a new weight is supplied.
-// ====================================================
-
-let finalWeight =
-    product.weight ?? 100;
-
-if (
-    weight !== undefined &&
-    weight !== ""
-) {
-    finalWeight =
-        Number(weight);
-
-    if (
-        !Number.isFinite(
-            finalWeight
-        ) ||
-        finalWeight <= 0 ||
-        !Number.isInteger(
-            finalWeight
-        )
-    ) {
-        return res
-            .status(400)
-            .json({
-                success: false,
-                message:
-                    "Product weight must be a whole number greater than 0 grams",
-            });
-    }
-}
 
         if (
             finalPricingType !==
@@ -1676,6 +1786,53 @@ if (
                         'Pricing type must be either "fixed" or "variants"',
                 });
         }
+
+        // ====================================================
+        // SHIPPING WEIGHT
+        // ====================================================
+
+        let finalWeight =
+            product.weight ??
+            100;
+
+        if (
+            weight !== undefined &&
+            weight !== ""
+        ) {
+            finalWeight =
+                Number(weight);
+
+            if (
+                !Number.isFinite(
+                    finalWeight
+                ) ||
+                finalWeight <= 0 ||
+                !Number.isInteger(
+                    finalWeight
+                )
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Product weight must be a whole number greater than 0 grams",
+                    });
+            }
+        }
+
+        // ====================================================
+        // DESCRIPTION
+        // ====================================================
+
+        const finalDescription =
+            description !==
+            undefined
+                ? String(
+                      description
+                  ).trim()
+                : product.description ||
+                  "";
 
         // ====================================================
         // OPTIONS
@@ -1776,7 +1933,7 @@ if (
         }
 
         // ====================================================
-        // PRICING + INVENTORY
+        // DEFAULT PRICING VALUES
         // ====================================================
 
         let finalPrice =
@@ -1796,8 +1953,11 @@ if (
             5;
 
         let finalVariants =
-            product.variants ||
-            [];
+            Array.isArray(
+                product.variants
+            )
+                ? product.variants
+                : [];
 
         // ====================================================
         // FIXED PRICING
@@ -1808,7 +1968,7 @@ if (
             "fixed"
         ) {
             // ------------------------------------------------
-            // SELLING PRICE
+            // PRICE
             // ------------------------------------------------
 
             if (
@@ -1838,7 +1998,7 @@ if (
             }
 
             // ------------------------------------------------
-            // ORIGINAL / MRP PRICE
+            // ORIGINAL PRICE
             // ------------------------------------------------
 
             if (
@@ -1850,17 +2010,14 @@ if (
                     Number(
                         originalPrice
                     );
-            } else if (
+            }
+
+            if (
                 finalOriginalPrice ===
                     null ||
                 finalOriginalPrice ===
                     undefined
             ) {
-                /*
-                 * For older products that do not
-                 * have originalPrice, use selling
-                 * price so the product remains valid.
-                 */
                 finalOriginalPrice =
                     finalPrice;
             }
@@ -1879,11 +2036,6 @@ if (
                             "Original price must be a valid non-negative number",
                     });
             }
-
-            // ------------------------------------------------
-            // ORIGINAL PRICE MUST NOT BE LESS THAN
-            // SELLING PRICE
-            // ------------------------------------------------
 
             if (
                 finalOriginalPrice <
@@ -1959,7 +2111,7 @@ if (
                     thresholdResult.value;
             }
 
-            // Fixed product has no variants.
+            // Fixed products have no variants.
             finalVariants = [];
         }
 
@@ -1976,10 +2128,10 @@ if (
             finalOriginalPrice =
                 null;
 
-            // Product-level stock is unused.
             finalStock = 0;
 
-            finalLowStockThreshold = 0;
+            finalLowStockThreshold =
+                0;
 
             if (
                 variants !==
@@ -2005,6 +2157,10 @@ if (
                             "Variants must be an array",
                     });
             }
+
+            // ------------------------------------------------
+            // VALIDATE VARIANTS
+            // ------------------------------------------------
 
             const variantError =
                 validateVariants(
@@ -2034,24 +2190,17 @@ if (
                                 variant.price
                             );
 
-                        let variantOriginalPrice;
-
-                        if (
+                        const variantOriginalPrice =
                             variant.originalPrice ===
                                 undefined ||
                             variant.originalPrice ===
                                 null ||
                             variant.originalPrice ===
                                 ""
-                        ) {
-                            variantOriginalPrice =
-                                sellingPrice;
-                        } else {
-                            variantOriginalPrice =
-                                Number(
-                                    variant.originalPrice
-                                );
-                        }
+                                ? sellingPrice
+                                : Number(
+                                      variant.originalPrice
+                                  );
 
                         return {
                             ...variant,
@@ -2089,17 +2238,19 @@ if (
                 );
 
             // ------------------------------------------------
-            // VALIDATE VARIANT ORIGINAL PRICES
+            // VALIDATE NORMALIZED VARIANTS
             // ------------------------------------------------
 
             for (
-                const variant of finalVariants
+                const variant of
+                    finalVariants
             ) {
                 if (
                     !Number.isFinite(
                         variant.originalPrice
                     ) ||
-                    variant.originalPrice < 0
+                    variant.originalPrice <
+                        0
                 ) {
                     return res
                         .status(400)
@@ -2130,7 +2281,9 @@ if (
         // ====================================================
 
         let finalFeatured =
-            product.featured;
+            Boolean(
+                product.featured
+            );
 
         if (
             featured !==
@@ -2139,57 +2292,150 @@ if (
             finalFeatured =
                 parseBoolean(
                     featured,
-                    product.featured
+                    finalFeatured
                 );
         }
 
         // ====================================================
-        // IMAGES
+        // STATUS
         // ====================================================
 
-        let finalImages =
-            product.images ||
-            [];
+        const finalStatus =
+            status !== undefined
+                ? status
+                : product.status;
 
         if (
+            finalStatus !==
+                "active" &&
+            finalStatus !==
+                "inactive"
+        ) {
+            return res
+                .status(400)
+                .json({
+                    success: false,
+                    message:
+                        'Status must be either "active" or "inactive"',
+                });
+        }
+
+        // ====================================================
+        // IMAGES
+        //
+        // imageOrder comes from the updated ProductForm.
+        //
+        // Example:
+        //
+        // [
+        //   "old-image-2.jpg",
+        //   "__NEW_IMAGE_0__",
+        //   "old-image-1.jpg"
+        // ]
+        // ====================================================
+
+        const originalImages =
+            Array.isArray(
+                product.images
+            )
+                ? [
+                      ...product.images,
+                  ]
+                : [];
+
+        let parsedImageOrder =
+            null;
+
+        // ----------------------------------------------------
+        // NEW FRONTEND
+        // ----------------------------------------------------
+
+        if (
+            imageOrder !==
+            undefined
+        ) {
+            parsedImageOrder =
+                parseJsonField(
+                    imageOrder,
+                    null
+                );
+
+            if (
+                !Array.isArray(
+                    parsedImageOrder
+                )
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Image order must be an array",
+                    });
+            }
+        }
+
+        // ----------------------------------------------------
+        // OLD FRONTEND COMPATIBILITY
+        // ----------------------------------------------------
+
+        else if (
             existingImages !==
             undefined
         ) {
-            const parsedExistingImages =
+            parsedImageOrder =
                 parseJsonField(
                     existingImages,
                     null
                 );
 
             if (
-                Array.isArray(
-                    parsedExistingImages
+                !Array.isArray(
+                    parsedImageOrder
                 )
             ) {
-                finalImages =
-                    parsedExistingImages;
-            } else if (
-                typeof existingImages ===
-                "string"
-            ) {
-                finalImages = [
-                    existingImages,
-                ];
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Existing images must be an array",
+                    });
             }
         }
 
         // ====================================================
-        // NEW IMAGES
+        // UPLOAD NEW IMAGES
         // ====================================================
+
+        const uploadedImageUrls =
+            [];
 
         if (
             req.files &&
-            req.files.length > 0
+            req.files.length >
+                0
         ) {
-            for (
-                const file of req.files
+            if (
+                req.files.length >
+                10
             ) {
-                if (!file.buffer) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Maximum 10 new images allowed",
+                    });
+            }
+
+            for (
+                const file of
+                    req.files
+            ) {
+                if (
+                    !file.buffer
+                ) {
                     return res
                         .status(400)
                         .json({
@@ -2204,11 +2450,189 @@ if (
                         file.buffer
                     );
 
-                finalImages.push(
+                uploadedImageUrls.push(
                     url
                 );
             }
         }
+
+        // ====================================================
+        // BUILD FINAL IMAGE ORDER
+        // ====================================================
+
+        let finalImages = [];
+
+        if (
+            parsedImageOrder !==
+            null
+        ) {
+            const originalImageSet =
+                new Set(
+                    originalImages
+                );
+
+            const usedNewIndexes =
+                new Set();
+
+            for (
+                const entry of
+                    parsedImageOrder
+            ) {
+                if (
+                    typeof entry !==
+                    "string"
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Invalid image order entry",
+                        });
+                }
+
+                // ------------------------------------------------
+                // NEW IMAGE
+                // ------------------------------------------------
+
+                if (
+                    entry.startsWith(
+                        "__NEW_IMAGE_"
+                    ) &&
+                    entry.endsWith(
+                        "__"
+                    )
+                ) {
+                    const match =
+                        entry.match(
+                            /^__NEW_IMAGE_(\d+)__$/
+                        );
+
+                    if (!match) {
+                        return res
+                            .status(400)
+                            .json({
+                                success: false,
+                                message:
+                                    "Invalid new image placeholder",
+                            });
+                    }
+
+                    const newIndex =
+                        Number(
+                            match[1]
+                        );
+
+                    if (
+                        !Number.isInteger(
+                            newIndex
+                        ) ||
+                        newIndex < 0 ||
+                        newIndex >=
+                            uploadedImageUrls.length
+                    ) {
+                        return res
+                            .status(400)
+                            .json({
+                                success: false,
+                                message:
+                                    "Image upload/order mismatch",
+                            });
+                    }
+
+                    if (
+                        usedNewIndexes.has(
+                            newIndex
+                        )
+                    ) {
+                        return res
+                            .status(400)
+                            .json({
+                                success: false,
+                                message:
+                                    "Duplicate new image in image order",
+                            });
+                    }
+
+                    usedNewIndexes.add(
+                        newIndex
+                    );
+
+                    finalImages.push(
+                        uploadedImageUrls[
+                            newIndex
+                        ]
+                    );
+
+                    continue;
+                }
+
+                // ------------------------------------------------
+                // EXISTING IMAGE
+                // ------------------------------------------------
+
+                if (
+                    !originalImageSet.has(
+                        entry
+                    )
+                ) {
+                    return res
+                        .status(400)
+                        .json({
+                            success: false,
+                            message:
+                                "Invalid existing product image",
+                        });
+                }
+
+                finalImages.push(
+                    entry
+                );
+            }
+
+            // ------------------------------------------------
+            // EVERY NEW UPLOAD MUST BE USED
+            // ------------------------------------------------
+
+            if (
+                usedNewIndexes.size !==
+                uploadedImageUrls.length
+            ) {
+                return res
+                    .status(400)
+                    .json({
+                        success: false,
+                        message:
+                            "Every uploaded image must be included in the image order",
+                    });
+            }
+        } else {
+            // ------------------------------------------------
+            // NO IMAGE ORDER SENT
+            //
+            // Preserve old images and append new ones.
+            // ------------------------------------------------
+
+            finalImages = [
+                ...originalImages,
+                ...uploadedImageUrls,
+            ];
+        }
+
+        // ====================================================
+        // REMOVE DUPLICATES
+        // ====================================================
+
+        finalImages =
+            Array.from(
+                new Set(
+                    finalImages
+                )
+            );
+
+        // ====================================================
+        // MAX 10
+        // ====================================================
 
         if (
             finalImages.length >
@@ -2224,7 +2648,37 @@ if (
         }
 
         // ====================================================
-        // UPDATE
+        // FIND REMOVED IMAGES
+        // ====================================================
+
+        const finalImageSet =
+            new Set(
+                finalImages
+            );
+
+        const removedImages =
+            originalImages.filter(
+                (url) =>
+                    !finalImageSet.has(
+                        url
+                    )
+            );
+
+        // ====================================================
+        // DELETE REMOVED CLOUDINARY IMAGES
+        // ====================================================
+
+        await Promise.all(
+            removedImages.map(
+                (url) =>
+                    deleteCloudinaryImage(
+                        url
+                    )
+            )
+        );
+
+        // ====================================================
+        // UPDATE PRODUCT
         // ====================================================
 
         const updatedProduct =
@@ -2240,39 +2694,20 @@ if (
                     slug:
                         finalSlug,
 
-                  description:
-    description !==
-    undefined
-        ? description.trim()
-        : product.description,
+                    description:
+                        finalDescription,
 
-// ------------------------------------------------
-// INTERNAL SHIPPING WEIGHT
-// ------------------------------------------------
+                    weight:
+                        finalWeight,
 
-weight:
-    finalWeight,
-
-pricingType:
-    finalPricingType,
-
-                    // ------------------------------------------------
-                    // ORIGINAL / MRP PRICE
-                    // ------------------------------------------------
+                    pricingType:
+                        finalPricingType,
 
                     originalPrice:
                         finalOriginalPrice,
 
-                    // ------------------------------------------------
-                    // CURRENT SELLING PRICE
-                    // ------------------------------------------------
-
                     price:
                         finalPrice,
-
-                    // ------------------------------------------------
-                    // FIXED PRODUCT INVENTORY
-                    // ------------------------------------------------
 
                     stock:
                         finalStock,
@@ -2280,27 +2715,8 @@ pricingType:
                     lowStockThreshold:
                         finalLowStockThreshold,
 
-                    // ------------------------------------------------
-                    // VARIANT INVENTORY + PRICING
-                    // ------------------------------------------------
-
                     variants:
                         finalVariants,
-
-                    // ------------------------------------------------
-                    // STATUS
-                    // ------------------------------------------------
-
-                    status:
-                        status ||
-                        product.status,
-
-                    featured:
-                        finalFeatured,
-
-                    // ------------------------------------------------
-                    // OPTIONS
-                    // ------------------------------------------------
 
                     options:
                         parsedOptions,
@@ -2308,36 +2724,38 @@ pricingType:
                     orderSelections:
                         parsedOrderSelections,
 
-                    // ------------------------------------------------
-                    // IMAGES
-                    // ------------------------------------------------
-
                     images:
                         finalImages,
+
+                    status:
+                        finalStatus,
+
+                    featured:
+                        finalFeatured,
                 },
                 {
                     new: true,
-                    runValidators: true,
+
+                    runValidators:
+                        true,
                 }
             ).populate(
                 "category",
                 "name slug status"
             );
 
-        if (!updatedProduct) {
-            return res
-                .status(404)
-                .json({
-                    success: false,
-                    message:
-                        "Product not found",
-                });
-        }
+        // ====================================================
+        // RESPONSE
+        // ====================================================
 
         return res
             .status(200)
             .json({
                 success: true,
+
+                message:
+                    "Product updated successfully",
+
                 product:
                     updatedProduct,
             });
@@ -2346,19 +2764,6 @@ pricingType:
             "UPDATE PRODUCT ERROR:",
             error
         );
-
-        if (
-            error.name ===
-            "CastError"
-        ) {
-            return res
-                .status(404)
-                .json({
-                    success: false,
-                    message:
-                        "Product not found",
-                });
-        }
 
         if (
             error.name ===
@@ -2389,7 +2794,7 @@ pricingType:
                 .json({
                     success: false,
                     message:
-                        "Another product uses this slug",
+                        "A product with this slug already exists",
                 });
         }
 
@@ -2403,6 +2808,12 @@ pricingType:
             });
     }
 };
+
+// ============================================================
+// DELETE PRODUCT
+// @route DELETE /api/products/:id
+// @access Admin
+// ============================================================
 
 // ============================================================
 // DELETE PRODUCT
@@ -2429,6 +2840,30 @@ export const deleteProduct = async (
                         "Product not found",
                 });
         }
+
+        // ====================================================
+        // DELETE PRODUCT IMAGES FROM CLOUDINARY
+        // ====================================================
+
+        const productImages =
+            Array.isArray(
+                product.images
+            )
+                ? product.images
+                : [];
+
+        await Promise.all(
+            productImages.map(
+                (url) =>
+                    deleteCloudinaryImage(
+                        url
+                    )
+            )
+        );
+
+        // ====================================================
+        // DELETE PRODUCT
+        // ====================================================
 
         await product.deleteOne();
 
