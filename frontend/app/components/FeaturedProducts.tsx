@@ -2,11 +2,11 @@
 
 import {
   memo,
+  useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useApi } from "../lib/api";
 
@@ -61,14 +61,9 @@ interface ProductsResponse {
 // ============================================================
 
 const FEATURED_LIMIT = 6;
-
-/*
- * Safety timeout for product-image readiness.
- *
- * We don't want one broken/slow image to keep the entire
- * homepage behind the loader forever.
- */
 const IMAGE_READY_TIMEOUT = 4500;
+
+const PLACEHOLDER_IMAGE = "/images/product-placeholder.jpg";
 
 // ============================================================
 // ARROW ICON
@@ -324,59 +319,155 @@ function getProductImage(product: Product): string {
       rawImage.startsWith("/")
     )
   ) {
-    return rawImage;
+    return rawImage.trim();
   }
 
-  return "/images/product-placeholder.jpg";
+  return PLACEHOLDER_IMAGE;
 }
+
+// ============================================================
+// RESPONSIVE IMAGE
+// ============================================================
+
+const ProductImage = memo(
+  ({
+    src,
+    alt,
+    priority,
+  }: {
+    src: string;
+    alt: string;
+    priority: boolean;
+  }) => {
+    const [imageSrc, setImageSrc] = useState(src);
+    const [failed, setFailed] = useState(false);
+
+    useEffect(() => {
+      setImageSrc(src);
+      setFailed(false);
+    }, [src]);
+
+    const handleError = useCallback(() => {
+      if (failed) {
+        return;
+      }
+
+      setFailed(true);
+
+      if (imageSrc !== PLACEHOLDER_IMAGE) {
+        setImageSrc(PLACEHOLDER_IMAGE);
+      }
+    }, [failed, imageSrc]);
+
+    return (
+      <>
+        <img
+          src={imageSrc}
+          alt={alt}
+          width={800}
+          height={800}
+          loading={priority ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={priority ? "high" : "auto"}
+          onError={handleError}
+          data-newprint-featured-image="true"
+          className="
+            absolute
+            inset-0
+            h-full
+            w-full
+            object-cover
+            transition-transform
+            duration-300
+            ease-out
+            will-change-transform
+            md:group-hover:scale-[1.035]
+          "
+        />
+
+        {failed && imageSrc === PLACEHOLDER_IMAGE && (
+          <div
+            className="
+              pointer-events-none
+              absolute
+              inset-0
+              flex
+              items-center
+              justify-center
+              bg-[#F5F4F0]
+            "
+            aria-hidden="true"
+          >
+            <svg
+              width="34"
+              height="34"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              className="text-[#B9954F]"
+            >
+              <rect
+                x="3"
+                y="4"
+                width="18"
+                height="16"
+                rx="2"
+              />
+              <circle cx="8.5" cy="9" r="1.5" />
+              <path d="M21 15l-4.5-4.5L7 20" />
+            </svg>
+          </div>
+        )}
+      </>
+    );
+  }
+);
+
+ProductImage.displayName = "ProductImage";
 
 // ============================================================
 // WAIT FOR INITIAL PRODUCT IMAGES
 // ============================================================
 
 async function waitForInitialProductImages(): Promise<void> {
-  /*
-   * Only wait for images that are actually present in the
-   * rendered featured-product grid.
-   */
+  if (typeof document === "undefined") {
+    return;
+  }
+
   const images = Array.from(
     document.querySelectorAll<HTMLImageElement>(
-      "[data-newprint-featured-image='true']"
+      "img[data-newprint-featured-image='true']"
     )
   );
 
-  /*
-   * No images means the page has nothing to wait for.
-   */
   if (images.length === 0) {
     return;
   }
 
-  /*
-   * Wait for each image to either:
-   *
-   * - already be complete,
-   * - successfully decode,
-   * - load,
-   * - or fail.
-   *
-   * We don't reject on image errors because the page itself
-   * should still become usable.
-   */
   await Promise.all(
     images.map(
       (image) =>
         new Promise<void>((resolve) => {
-          if (image.complete) {
-            resolve();
-            return;
-          }
+          let finished = false;
 
           const finish = () => {
+            if (finished) {
+              return;
+            }
+
+            finished = true;
+
             image.removeEventListener("load", finish);
             image.removeEventListener("error", finish);
+
             resolve();
           };
+
+          if (image.complete) {
+            finish();
+            return;
+          }
 
           image.addEventListener("load", finish, {
             once: true,
@@ -386,18 +477,11 @@ async function waitForInitialProductImages(): Promise<void> {
             once: true,
           });
 
-          /*
-           * Extra safety for a browser/network edge case.
-           */
           window.setTimeout(finish, IMAGE_READY_TIMEOUT);
         })
     )
   );
 
-  /*
-   * If supported, allow the browser to finish decoding
-   * images before the loader is removed.
-   */
   await Promise.all(
     images.map(async (image) => {
       if (typeof image.decode !== "function") {
@@ -407,9 +491,7 @@ async function waitForInitialProductImages(): Promise<void> {
       try {
         await image.decode();
       } catch {
-        /*
-         * A failed decode should never block the homepage.
-         */
+        // Image decoding failure must never block the page.
       }
     })
   );
@@ -420,9 +502,10 @@ async function waitForInitialProductImages(): Promise<void> {
 // ============================================================
 
 function dispatchProductsReady() {
-  /*
-   * Custom event consumed by HomePageReady.
-   */
+  if (typeof window === "undefined") {
+    return;
+  }
+
   window.dispatchEvent(
     new CustomEvent("newprint:products-ready")
   );
@@ -445,13 +528,6 @@ const ProductCard = memo(
     const productHref =
       `/products/${product.slug || product._id}`;
 
-    /*
-     * Only the first two images receive priority.
-     *
-     * This is especially useful for the mobile 2-column
-     * layout where the first two products are immediately
-     * visible.
-     */
     const isPriority = index < 2;
 
     const isVariantProduct =
@@ -501,6 +577,7 @@ const ProductCard = memo(
           border
           border-[#E5E7EB]
           bg-white
+          transform-gpu
           transition-[transform,border-color,box-shadow]
           duration-200
           ease-out
@@ -511,32 +588,32 @@ const ProductCard = memo(
       >
         <Link
           href={productHref}
-          className="block"
+          className="block touch-manipulation"
           aria-label={`View ${product.name}`}
         >
+          {/* IMAGE */}
+
           <div className="relative aspect-square w-full overflow-hidden bg-[#F5F4F0]">
-            <Image
+            <ProductImage
               src={image}
               alt={product.name}
-              fill
               priority={isPriority}
-              loading={isPriority ? undefined : "lazy"}
-              sizes="
-                (max-width: 639px) 50vw,
-                (max-width: 1023px) 33vw,
-                25vw
-              "
-              data-newprint-featured-image="true"
-              className="
-                object-cover
-                transition-transform
-                duration-300
-                ease-out
-                md:group-hover:scale-[1.035]
-              "
             />
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/[0.12] via-transparent to-transparent" />
+            <div
+              className="
+                pointer-events-none
+                absolute
+                inset-0
+                bg-gradient-to-t
+                from-black/[0.12]
+                via-transparent
+                to-transparent
+              "
+              aria-hidden="true"
+            />
+
+            {/* CATEGORY */}
 
             {product.category?.name && (
               <div className="absolute left-2.5 top-2.5 z-10 max-w-[55%] sm:left-3 sm:top-3">
@@ -545,6 +622,8 @@ const ProductCard = memo(
                 </span>
               </div>
             )}
+
+            {/* DISCOUNT */}
 
             {(hasFixedDiscount || variantDiscount > 0) && (
               <div className="absolute bottom-2.5 left-2.5 z-10 sm:bottom-3 sm:left-3">
@@ -557,6 +636,8 @@ const ProductCard = memo(
               </div>
             )}
 
+            {/* FEATURED */}
+
             {product.featured && (
               <div className="absolute right-2.5 top-2.5 z-10 sm:right-3 sm:top-3">
                 <span className="rounded-[5px] bg-[#B9954F] px-2 py-1 text-[8px] font-extrabold uppercase tracking-[0.1em] text-white sm:px-2.5 sm:text-[9px]">
@@ -565,6 +646,8 @@ const ProductCard = memo(
               </div>
             )}
           </div>
+
+          {/* CONTENT */}
 
           <div className="p-3.5 sm:p-5">
             <p className="text-[8px] font-extrabold uppercase tracking-[0.16em] text-[#B9954F] sm:text-[9px]">
@@ -585,6 +668,8 @@ const ProductCard = memo(
               </p>
             )}
 
+            {/* PRICE */}
+
             <div className="mt-3 border-t border-[#E5E7EB] pt-3 sm:mt-4 sm:pt-3.5">
               {!isVariantProduct &&
               sellingPrice !== null ? (
@@ -595,11 +680,13 @@ const ProductCard = memo(
                         {discountPercentage}% OFF
                       </span>
 
-                      <span className="text-[10px] font-semibold text-[#94A3B8] line-through sm:text-xs">
-                        {formatProductPrice(
-                          originalPrice!
-                        )}
-                      </span>
+                      {originalPrice !== null && (
+                        <span className="text-[10px] font-semibold text-[#94A3B8] line-through sm:text-xs">
+                          {formatProductPrice(
+                            originalPrice
+                          )}
+                        </span>
+                      )}
 
                       <span className="text-sm font-extrabold tracking-[-0.01em] text-[#0A1B2E] sm:text-base">
                         {formatProductPrice(
@@ -650,6 +737,8 @@ const ProductCard = memo(
                 </span>
               )}
 
+              {/* ARROW */}
+
               <div className="mt-3 flex items-center justify-end">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#F7F7F5] text-[#0A1B2E] transition-colors duration-200 md:group-hover:bg-[#0A1B2E] md:group-hover:text-white sm:h-8 sm:w-8">
                   <ArrowUpRightIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
@@ -679,10 +768,10 @@ export default function FeaturedProducts() {
   const readyDispatchedRef = useRef(false);
 
   // ==========================================================
-  // DISPATCH READY ONCE
+  // READY EVENT
   // ==========================================================
 
-  const notifyHomepageReady = () => {
+  const notifyHomepageReady = useCallback(() => {
     if (readyDispatchedRef.current) {
       return;
     }
@@ -690,7 +779,7 @@ export default function FeaturedProducts() {
     readyDispatchedRef.current = true;
 
     dispatchProductsReady();
-  };
+  }, []);
 
   // ==========================================================
   // FETCH FEATURED PRODUCTS
@@ -757,11 +846,12 @@ export default function FeaturedProducts() {
       mounted = false;
     };
 
+    // Intentionally run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ==========================================================
-  // WAIT FOR RENDERED PRODUCT IMAGES
+  // WAIT FOR IMAGES
   // ==========================================================
 
   useEffect(() => {
@@ -773,7 +863,7 @@ export default function FeaturedProducts() {
 
     const finishReadiness = async () => {
       /*
-       * Give React one frame to commit the product cards.
+       * Allow React to commit the product cards.
        */
       await new Promise<void>((resolve) => {
         window.requestAnimationFrame(() => {
@@ -786,7 +876,7 @@ export default function FeaturedProducts() {
       }
 
       /*
-       * Wait for the initial visible product images.
+       * Wait for images.
        */
       await waitForInitialProductImages();
 
@@ -795,7 +885,7 @@ export default function FeaturedProducts() {
       }
 
       /*
-       * Give the browser another frame after image decoding.
+       * One final browser frame.
        */
       await new Promise<void>((resolve) => {
         window.requestAnimationFrame(() => {
@@ -807,13 +897,6 @@ export default function FeaturedProducts() {
         return;
       }
 
-      /*
-       * Tell HomePageReady:
-       *
-       * Featured Products data is ready.
-       * Initial product layout is rendered.
-       * Initial product images are ready enough to reveal.
-       */
       notifyHomepageReady();
     };
 
@@ -822,18 +905,13 @@ export default function FeaturedProducts() {
     return () => {
       cancelled = true;
     };
-  }, [loading, products.length]);
+  }, [loading, products.length, notifyHomepageReady]);
 
   // ==========================================================
-  // SAFETY READY FALLBACK
+  // EMPTY / ERROR FALLBACK READY
   // ==========================================================
 
   useEffect(() => {
-    /*
-     * If there are no products because the API returned an
-     * empty collection or an error, there are no product images
-     * to wait for.
-     */
     if (loading) {
       return;
     }
@@ -847,9 +925,11 @@ export default function FeaturedProducts() {
         window.clearTimeout(timer);
       };
     }
-
-    return;
-  }, [loading, products.length]);
+  }, [
+    loading,
+    products.length,
+    notifyHomepageReady,
+  ]);
 
   // ==========================================================
   // RENDER
@@ -869,7 +949,7 @@ export default function FeaturedProducts() {
       aria-labelledby="featured-products-heading"
     >
       {/* =====================================================
-          LIGHT DECORATION
+          BACKGROUND DECORATION
       ====================================================== */}
 
       <div
@@ -912,7 +992,7 @@ export default function FeaturedProducts() {
       <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
         {/* ===================================================
             HEADER
-        =================================================== */}
+        ==================================================== */}
 
         <div className="mb-7 flex flex-col gap-5 sm:mb-9 lg:mb-11 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
@@ -967,6 +1047,7 @@ export default function FeaturedProducts() {
               text-xs
               font-semibold
               text-[#0A1B2E]
+              touch-manipulation
               transition-colors
               duration-200
               hover:border-[#B9954F]
@@ -988,7 +1069,7 @@ export default function FeaturedProducts() {
 
         {/* ===================================================
             LOADING
-        =================================================== */}
+        ==================================================== */}
 
         {loading && (
           <div
@@ -1002,23 +1083,23 @@ export default function FeaturedProducts() {
             "
             aria-label="Loading products"
           >
-            {Array.from({
-              length: 4,
-            }).map((_, index) => (
-              <ProductSkeleton key={index} />
-            ))}
+            {Array.from({ length: 4 }).map(
+              (_, index) => (
+                <ProductSkeleton key={index} />
+              )
+            )}
           </div>
         )}
 
         {/* ===================================================
             ERROR
-        =================================================== */}
+        ==================================================== */}
 
         {!loading && error && <ErrorState />}
 
         {/* ===================================================
             EMPTY
-        =================================================== */}
+        ==================================================== */}
 
         {!loading &&
           !error &&
@@ -1028,7 +1109,7 @@ export default function FeaturedProducts() {
 
         {/* ===================================================
             PRODUCTS
-        =================================================== */}
+        ==================================================== */}
 
         {!loading &&
           !error &&
