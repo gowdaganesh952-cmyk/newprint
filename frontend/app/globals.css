@@ -44,6 +44,7 @@
 html {
   width: 100%;
   min-height: 100%;
+
   background: #ffffff;
 
   scroll-behavior: smooth;
@@ -57,6 +58,7 @@ html {
 body {
   width: 100%;
   min-height: 100dvh;
+
   margin: 0;
   padding: 0;
 
@@ -195,35 +197,93 @@ article {
 }
 
 /* ============================================================
-   NEW PRINT LOADER ANIMATIONS
+   NEW PRINT LOADER
+   GPU-FRIENDLY ANIMATIONS
 ============================================================ */
 
 .animate-newprint-loader-slow {
-  animation: newprintLoaderSpin 12s linear infinite;
+  animation:
+    newprintLoaderSpin
+    12s
+    linear
+    infinite;
+
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 
 .animate-newprint-loader-main {
-  animation: newprintLoaderSpin 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation:
+    newprintLoaderSpin
+    1.8s
+    cubic-bezier(0.4, 0, 0.2, 1)
+    infinite;
+
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 
 .animate-newprint-loader-reverse {
-  animation: newprintLoaderSpinReverse 1.25s linear infinite;
+  animation:
+    newprintLoaderSpinReverse
+    1.25s
+    linear
+    infinite;
+
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 
 .animate-newprint-loader-disc {
-  animation: newprintLoaderSpin 3.5s linear infinite;
+  animation:
+    newprintLoaderSpin
+    3.5s
+    linear
+    infinite;
+
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 
 .animate-newprint-loader-orbit {
-  animation: newprintLoaderSpin 2.7s linear infinite;
+  animation:
+    newprintLoaderSpin
+    2.7s
+    linear
+    infinite;
+
+  transform-origin: center;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  will-change: transform;
 }
 
 .animate-newprint-loader-text {
-  animation: newprintLoaderText 0.45s ease-out;
+  animation:
+    newprintLoaderText
+    0.45s
+    ease-out
+    both;
+
+  will-change: transform, opacity;
 }
 
 .animate-newprint-loader-progress {
-  animation: newprintLoaderProgress 1.6s ease-in-out infinite;
+  animation:
+    newprintLoaderProgress
+    1.6s
+    ease-in-out
+    infinite;
+
+  will-change: transform;
 }
 
 /* ============================================================
@@ -253,26 +313,26 @@ article {
 @keyframes newprintLoaderText {
   from {
     opacity: 0;
-    transform: translateY(5px);
+    transform: translate3d(0, 5px, 0);
   }
 
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
 @keyframes newprintLoaderProgress {
   0% {
-    transform: translateX(-160%);
+    transform: translate3d(-160%, 0, 0);
   }
 
   50% {
-    transform: translateX(190%);
+    transform: translate3d(190%, 0, 0);
   }
 
   100% {
-    transform: translateX(370%);
+    transform: translate3d(370%, 0, 0);
   }
 }
 
@@ -302,6 +362,7 @@ article {
   .animate-newprint-loader-text,
   .animate-newprint-loader-progress {
     animation: none !important;
+    will-change: auto;
   }
 }
 
@@ -340,7 +401,7 @@ article {
 }
 
 /* ============================================================
-   MOBILE PERFORMANCE
+   TOUCH DEVICE PERFORMANCE
 ============================================================ */
 
 @media (hover: none) and (pointer: coarse) {
@@ -367,5 +428,36 @@ article {
 @media (max-width: 900px) and (orientation: landscape) {
   html {
     scroll-padding-top: 60px;
+  }
+}
+
+/* ============================================================
+   VERY SHORT SCREENS
+   Prevent loader from feeling cramped
+============================================================ */
+
+@media (max-height: 500px) {
+  .animate-newprint-loader-slow,
+  .animate-newprint-loader-main,
+  .animate-newprint-loader-reverse,
+  .animate-newprint-loader-disc,
+  .animate-newprint-loader-orbit {
+    animation-duration: 1.4s;
+  }
+}
+
+/* ============================================================
+   LOADER PERFORMANCE
+============================================================ */
+
+@media (hover: none) and (pointer: coarse) {
+  .animate-newprint-loader-slow,
+  .animate-newprint-loader-main,
+  .animate-newprint-loader-reverse,
+  .animate-newprint-loader-disc,
+  .animate-newprint-loader-orbit,
+  .animate-newprint-loader-progress {
+    -webkit-transform: translateZ(0);
+    transform: translateZ(0);
   }
 }
