@@ -1,28 +1,51 @@
 import mongoose from "mongoose";
 
 /* ============================================================
+   CONSTANTS
+============================================================ */
+
+const MAX_PRINT_IMAGES = 6;
+
+/* ============================================================
    PRINT IMAGE
 ============================================================ */
 
 const printImageSchema =
-  new mongoose.Schema(
-    {
-      url: {
-        type: String,
-        required: true,
-        trim: true,
-      },
+    new mongoose.Schema(
+        {
+            /* ==================================================
+               CLOUDINARY URL
+            ================================================== */
 
-      publicId: {
-        type: String,
-        required: true,
-        trim: true,
-      },
-    },
-    {
-      _id: false,
-    }
-  );
+            url: {
+                type: String,
+
+                required: true,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               CLOUDINARY PUBLIC ID
+            ================================================== */
+
+            publicId: {
+                type: String,
+
+                required: true,
+
+                trim: true,
+            },
+        },
+
+        {
+            /*
+             * Do not create an _id
+             * for every print image.
+             */
+            _id: false,
+        }
+    );
 
 /* ============================================================
    PRINT UNIT
@@ -33,490 +56,483 @@ const printImageSchema =
  *
  * Example:
  *
- * Product quantity = 2
+ * quantity = 2
  *
- * printUnits:
+ * printUnits = [
  *
- * [
- *   {
- *     unitId: "unit_1",
- *     images: [
- *       image1,
- *       image2
- *     ]
- *   },
+ *     {
+ *         unitId: "unit_1",
  *
- *   {
- *     unitId: "unit_2",
- *     images: [
- *       image1
- *     ]
- *   }
+ *         images: [
+ *             image1,
+ *             image2
+ *         ]
+ *     },
+ *
+ *     {
+ *         unitId: "unit_2",
+ *
+ *         images: [
+ *             image1
+ *         ]
+ *     }
+ *
  * ]
  *
- * These images are copied from the cart
- * into the permanent order snapshot.
+ * Each physical product:
+ *
+ * minimum 1 image
+ * maximum 6 images
  */
 
 const printUnitSchema =
-  new mongoose.Schema(
-    {
-      unitId: {
-        type: String,
-        required: true,
-        trim: true,
-      },
+    new mongoose.Schema(
+        {
+            /* ==================================================
+               UNIT ID
+            ================================================== */
 
-      images: {
-        type: [printImageSchema],
+            unitId: {
+                type: String,
 
-        default: [],
+                required: true,
 
-        validate: {
-          validator(images) {
-            return (
-              Array.isArray(images) &&
-              images.length >= 1 &&
-              images.length <= 3
-            );
-          },
+                trim: true,
+            },
 
-          message:
-            "Each physical product must have 1 to 3 print images.",
+            /* ==================================================
+               PRINT IMAGES
+            ================================================== */
+
+            images: {
+                type: [
+                    printImageSchema,
+                ],
+
+                default: [],
+
+                validate: {
+                    validator(
+                        images
+                    ) {
+                        return (
+                            Array.isArray(
+                                images
+                            ) &&
+                            images.length >=
+                                1 &&
+                            images.length <=
+                                MAX_PRINT_IMAGES
+                        );
+                    },
+
+                    message:
+                        `Each physical product must have 1 to ${MAX_PRINT_IMAGES} print images.`,
+                },
+            },
         },
-      },
-    },
-    {
-      _id: false,
-    }
-  );
+
+        {
+            /*
+             * unitId is our own
+             * stable identifier.
+             */
+            _id: false,
+        }
+    );
 
 /* ============================================================
    ORDER ITEM
 ============================================================ */
 
 const orderItemSchema =
-  new mongoose.Schema(
-    {
-      /* ======================================================
-         PRODUCT
-      ====================================================== */
+    new mongoose.Schema(
+        {
+            /* ==================================================
+               PRODUCT
+            ================================================== */
 
-      productId: {
-        type: mongoose.Schema.Types.ObjectId,
+            productId: {
+                type:
+                    mongoose.Schema.Types.ObjectId,
 
-        ref: "Product",
+                ref: "Product",
 
-        required: true,
-      },
+                required: true,
+            },
 
-      /*
-       * Exact cart-line identifier.
-       *
-       * Useful when the same product has
-       * different variants.
-       */
+            /* ==================================================
+               ITEM KEY
+            ================================================== */
 
-      itemKey: {
-        type: String,
+            itemKey: {
+                type: String,
 
-        required: true,
+                required: true,
 
-        trim: true,
-      },
+                trim: true,
+            },
 
-      /* ======================================================
-         PRODUCT SNAPSHOT
-      ====================================================== */
+            /* ==================================================
+               PRODUCT SNAPSHOT
+            ================================================== */
 
-      /*
-       * These values are copied from the cart
-       * when the order is created.
-       *
-       * The order should NOT depend on the
-       * Product document changing later.
-       */
+            name: {
+                type: String,
 
-      name: {
-        type: String,
+                required: true,
 
-        required: true,
+                trim: true,
+            },
 
-        trim: true,
-      },
+            image: {
+                type: String,
 
-      image: {
-        type: String,
+                default: "",
+            },
 
-        default: "",
-      },
+            /* ==================================================
+               PRICE SNAPSHOT
+            ================================================== */
 
-      /* ======================================================
-         PRICE SNAPSHOT
-      ====================================================== */
+            price: {
+                type: Number,
 
-      price: {
-        type: Number,
+                required: true,
 
-        required: true,
+                min: 0,
+            },
 
-        min: 0,
-      },
+            /* ==================================================
+               QUANTITY
+            ================================================== */
 
-      quantity: {
-        type: Number,
+            quantity: {
+                type: Number,
 
-        required: true,
+                required: true,
 
-        min: 1,
+                min: 1,
 
-        validate: {
-          validator:
-            Number.isInteger,
+                validate: {
+                    validator:
+                        Number.isInteger,
 
-          message:
-            "Quantity must be an integer.",
+                    message:
+                        "Quantity must be an integer.",
+                },
+            },
+
+            /* ==================================================
+               PRODUCT SELECTIONS
+            ================================================== */
+
+            selections: {
+                type:
+                    mongoose.Schema.Types.Mixed,
+
+                default: {},
+            },
+
+            /* ==================================================
+               PRINT UNITS
+            ================================================== */
+
+            printUnits: {
+                type: [
+                    printUnitSchema,
+                ],
+
+                required: true,
+
+                validate: {
+                    validator(
+                        units
+                    ) {
+                        return (
+                            Array.isArray(
+                                units
+                            ) &&
+                            units.length >=
+                                1
+                        );
+                    },
+
+                    message:
+                        "Order item must contain print units.",
+                },
+            },
         },
-      },
 
-      /* ======================================================
-         VARIANT / SELECTION SNAPSHOT
-      ====================================================== */
-
-      selections: {
-        type: mongoose.Schema.Types.Mixed,
-
-        default: {},
-      },
-
-      /* ======================================================
-         PRINT IMAGES
-      ====================================================== */
-
-      /*
-       * IMPORTANT:
-       *
-       * This is the permanent copy of the
-       * customer's uploaded print images.
-       *
-       * Cart can later be cleared.
-       * Product can later be changed.
-       *
-       * The order still keeps the images
-       * required for printing.
-       */
-
-      printUnits: {
-        type: [printUnitSchema],
-
-        required: true,
-
-        validate: {
-          validator(units) {
-            return (
-              Array.isArray(units) &&
-              units.length >= 1
-            );
-          },
-
-          message:
-            "Order item must contain print units.",
-        },
-      },
-    },
-    {
-      _id: true,
-    }
-  );
+        {
+            /*
+             * Order item needs its own
+             * MongoDB _id.
+             */
+            _id: true,
+        }
+    );
 
 /* ============================================================
    ORDER SCHEMA
 ============================================================ */
 
 const orderSchema =
-  new mongoose.Schema(
-    {
-      /* ======================================================
-         USER
-      ====================================================== */
+    new mongoose.Schema(
+        {
+            /* ==================================================
+               USER
+            ================================================== */
 
-      userId: {
-        type: String,
+            userId: {
+                type: String,
 
-        required: true,
+                required: true,
 
-        index: true,
+                index: true,
 
-        trim: true,
-      },
+                trim: true,
+            },
 
-      /* ======================================================
-         ORDER NUMBER
-      ====================================================== */
+            /* ==================================================
+               ORDER NUMBER
+            ================================================== */
 
-      /*
-       * Your own customer-facing order number.
-       *
-       * Example:
-       *
-       * NP10001
-       */
+            orderNumber: {
+                type: String,
 
-      orderNumber: {
-        type: String,
+                required: true,
 
-        required: true,
+                unique: true,
 
-        unique: true,
+                index: true,
 
-        index: true,
+                trim: true,
+            },
 
-        trim: true,
-      },
+            /* ==================================================
+               ORDER ITEMS
+            ================================================== */
 
-      /* ======================================================
-         ORDER ITEMS
-      ====================================================== */
+            items: {
+                type: [
+                    orderItemSchema,
+                ],
 
-      items: {
-        type: [orderItemSchema],
+                required: true,
 
-        required: true,
+                validate: {
+                    validator(
+                        items
+                    ) {
+                        return (
+                            Array.isArray(
+                                items
+                            ) &&
+                            items.length > 0
+                        );
+                    },
 
-        validate: {
-          validator(items) {
-            return (
-              Array.isArray(items) &&
-              items.length > 0
-            );
-          },
+                    message:
+                        "An order must contain at least one item.",
+                },
+            },
 
-          message:
-            "An order must contain at least one item.",
+            /* ==================================================
+               SUBTOTAL
+            ================================================== */
+
+            subtotal: {
+                type: Number,
+
+                required: true,
+
+                min: 0,
+            },
+
+            /* ==================================================
+               DELIVERY FEE
+            ================================================== */
+
+            deliveryFee: {
+                type: Number,
+
+                required: true,
+
+                min: 0,
+
+                default: 0,
+            },
+
+            /* ==================================================
+               TOTAL AMOUNT
+            ================================================== */
+
+            totalAmount: {
+                type: Number,
+
+                required: true,
+
+                min: 0,
+            },
+
+            /* ==================================================
+               CURRENCY
+            ================================================== */
+
+            currency: {
+                type: String,
+
+                required: true,
+
+                uppercase: true,
+
+                trim: true,
+
+                default: "INR",
+            },
+
+            /* ==================================================
+               ORDER STATUS
+            ================================================== */
+
+            status: {
+                type: String,
+
+                enum: [
+                    "Pending Payment",
+                    "Processing",
+                    "Shipped",
+                    "Delivered",
+                    "Cancelled",
+                ],
+
+                default:
+                    "Pending Payment",
+
+                index: true,
+            },
+
+            /* ==================================================
+               PAYMENT STATUS
+            ================================================== */
+
+            paymentStatus: {
+                type: String,
+
+                enum: [
+                    "Pending",
+                    "Paid",
+                    "Failed",
+                    "Refunded",
+                ],
+
+                default:
+                    "Pending",
+
+                index: true,
+            },
+
+            /* ==================================================
+               RAZORPAY ORDER ID
+            ================================================== */
+
+            razorpayOrderId: {
+                type: String,
+
+                default: null,
+
+                sparse: true,
+
+                index: true,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               RAZORPAY PAYMENT ID
+            ================================================== */
+
+            razorpayPaymentId: {
+                type: String,
+
+                default: null,
+
+                sparse: true,
+
+                index: true,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               RAZORPAY SIGNATURE
+            ================================================== */
+
+            razorpaySignature: {
+                type: String,
+
+                default: null,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               PAYMENT METHOD
+            ================================================== */
+
+            paymentMethod: {
+                type: String,
+
+                default: null,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               PAYMENT VERIFIED TIME
+            ================================================== */
+
+            paymentVerifiedAt: {
+                type: Date,
+
+                default: null,
+            },
+
+            /* ==================================================
+               RAZORPAY RECEIPT
+            ================================================== */
+
+            razorpayReceipt: {
+                type: String,
+
+                default: null,
+
+                trim: true,
+            },
+
+            /* ==================================================
+               SHIPPING ADDRESS SNAPSHOT
+            ================================================== */
+
+            shippingAddress: {
+                type:
+                    mongoose.Schema.Types.Mixed,
+
+                required: true,
+            },
         },
-      },
 
-      /* ======================================================
-         AMOUNTS
-      ====================================================== */
-
-      subtotal: {
-        type: Number,
-
-        required: true,
-
-        min: 0,
-      },
-
-      deliveryFee: {
-        type: Number,
-
-        required: true,
-
-        min: 0,
-
-        default: 0,
-      },
-
-      totalAmount: {
-        type: Number,
-
-        required: true,
-
-        min: 0,
-      },
-
-      currency: {
-        type: String,
-
-        required: true,
-
-        uppercase: true,
-
-        trim: true,
-
-        default: "INR",
-      },
-
-      /* ======================================================
-         ORDER STATUS
-      ====================================================== */
-
-      /*
-       * Payment status and order status are
-       * intentionally separate.
-       *
-       * Example:
-       *
-       * paymentStatus = "Paid"
-       * orderStatus = "Processing"
-       */
-
-      status: {
-        type: String,
-
-        enum: [
-          "Pending Payment",
-          "Processing",
-          "Shipped",
-          "Delivered",
-          "Cancelled",
-        ],
-
-        default:
-          "Pending Payment",
-
-        index: true,
-      },
-
-      /* ======================================================
-         PAYMENT STATUS
-      ====================================================== */
-
-      paymentStatus: {
-        type: String,
-
-        enum: [
-          "Pending",
-          "Paid",
-          "Failed",
-          "Refunded",
-        ],
-
-        default: "Pending",
-
-        index: true,
-      },
-
-      /* ======================================================
-         RAZORPAY
-      ====================================================== */
-
-      /*
-       * Razorpay Order ID.
-       *
-       * Example:
-       *
-       * order_xxxxxxxxx
-       */
-
-      razorpayOrderId: {
-        type: String,
-
-        default: null,
-
-        sparse: true,
-
-        index: true,
-
-        trim: true,
-      },
-
-      /*
-       * Razorpay Payment ID.
-       *
-       * Example:
-       *
-       * pay_xxxxxxxxx
-       */
-
-      razorpayPaymentId: {
-        type: String,
-
-        default: null,
-
-        sparse: true,
-
-        index: true,
-
-        trim: true,
-      },
-
-      /*
-       * Signature returned by Razorpay Checkout.
-       *
-       * Stored for audit/reference.
-       */
-
-      razorpaySignature: {
-        type: String,
-
-        default: null,
-
-        trim: true,
-      },
-
-      /*
-       * Optional payment method snapshot.
-       *
-       * Example:
-       *
-       * upi
-       * card
-       * netbanking
-       */
-
-      paymentMethod: {
-        type: String,
-
-        default: null,
-
-        trim: true,
-      },
-
-      /*
-       * Time when our server verified
-       * the Razorpay payment successfully.
-       */
-
-      paymentVerifiedAt: {
-        type: Date,
-
-        default: null,
-      },
-
-      /*
-       * Razorpay receipt used while
-       * creating the Razorpay Order.
-       */
-
-      razorpayReceipt: {
-        type: String,
-
-        default: null,
-
-        trim: true,
-      },
-
-      /* ======================================================
-         SHIPPING ADDRESS
-      ====================================================== */
-
-      /*
-       * Snapshot the address at the time
-       * the order is created.
-       *
-       * Do NOT rely on the user's current
-       * Address document later.
-       */
-
-      shippingAddress: {
-        type: mongoose.Schema.Types.Mixed,
-
-        required: true,
-      },
-    },
-
-    {
-      timestamps: true,
-    }
-  );
+        {
+            timestamps: true,
+        }
+    );
 
 /* ============================================================
    EXPORT
 ============================================================ */
 
 export default mongoose.model(
-  "Order",
-  orderSchema
+    "Order",
+    orderSchema
 );

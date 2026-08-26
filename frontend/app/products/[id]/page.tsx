@@ -9,7 +9,11 @@ import {
 } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import {
+  useParams,
+  usePathname,
+} from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 
 import Navbar from "@/app/components/Navbar";
 import { useApi } from "@/app/lib/api";
@@ -39,17 +43,8 @@ interface ProductOrderSelection {
 interface ProductVariant {
   _id?: string;
   selections: Record<string, string>;
-
-  /**
-   * Original / MRP price before discount.
-   */
   originalPrice?: number;
-
-  /**
-   * Current selling price.
-   */
   price: number;
-
   sku?: string;
   stock?: number;
   lowStockThreshold?: number;
@@ -62,14 +57,7 @@ interface Product {
   slug?: string;
   description?: string;
 
-  /**
-   * Original / MRP price for fixed-price products.
-   */
   originalPrice?: number | null;
-
-  /**
-   * Current selling price for fixed-price products.
-   */
   price?: number | null;
 
   pricingType?: "fixed" | "variants";
@@ -110,6 +98,16 @@ interface CartItemLike {
 
 const FALLBACK_IMAGE =
   "/images/product-placeholder.jpg";
+
+const EMPTY_SELECTIONS: Record<
+  string,
+  string
+> = {};
+
+const EMPTY_ERRORS: Record<
+  string,
+  string
+> = {};
 
 // ============================================================
 // ICONS
@@ -230,22 +228,31 @@ function formatPrice(
   )}`;
 }
 
-// ============================================================
-// DISCOUNT HELPERS
-// ============================================================
-
 function getDiscountPercentage(
-  originalPrice: number | null | undefined,
-  sellingPrice: number | null | undefined
+  originalPrice:
+    | number
+    | null
+    | undefined,
+  sellingPrice:
+    | number
+    | null
+    | undefined
 ): number {
   if (
-    typeof originalPrice !== "number" ||
-    !Number.isFinite(originalPrice) ||
+    typeof originalPrice !==
+      "number" ||
+    !Number.isFinite(
+      originalPrice
+    ) ||
     originalPrice <= 0 ||
-    typeof sellingPrice !== "number" ||
-    !Number.isFinite(sellingPrice) ||
+    typeof sellingPrice !==
+      "number" ||
+    !Number.isFinite(
+      sellingPrice
+    ) ||
     sellingPrice < 0 ||
-    originalPrice <= sellingPrice
+    originalPrice <=
+      sellingPrice
   ) {
     return 0;
   }
@@ -255,7 +262,8 @@ function getDiscountPercentage(
     Math.min(
       100,
       Math.round(
-        ((originalPrice - sellingPrice) /
+        ((originalPrice -
+          sellingPrice) /
           originalPrice) *
           100
       )
@@ -271,19 +279,15 @@ function normalizeSelectionValue(
   ).trim();
 }
 
-// ============================================================
-// EXACT SELECTION MATCH
-// ============================================================
-
 function selectionsMatch(
   first: Record<
     string,
     string
-  > = {},
+  > = EMPTY_SELECTIONS,
   second: Record<
     string,
     string
-  > = {}
+  > = EMPTY_SELECTIONS
 ): boolean {
   const firstEntries =
     Object.entries(first)
@@ -348,24 +352,20 @@ function selectionsMatch(
   );
 }
 
-// ============================================================
-// PARTIAL VARIANT MATCH
-// ============================================================
-
 function selectionPartiallyMatches(
   variantSelections: Record<
     string,
     string
-  > = {},
+  > = EMPTY_SELECTIONS,
   selectedSelections: Record<
     string,
     string
-  > = {}
+  > = EMPTY_SELECTIONS
 ): boolean {
-  const selectedEntries =
-    Object.entries(
-      selectedSelections
-    ).filter(
+  return Object.entries(
+    selectedSelections
+  )
+    .filter(
       ([key, value]) =>
         normalizeSelectionValue(
           key
@@ -373,17 +373,16 @@ function selectionPartiallyMatches(
         normalizeSelectionValue(
           value
         )
+    )
+    .every(
+      ([key, value]) =>
+        normalizeSelectionValue(
+          variantSelections[key]
+        ) ===
+        normalizeSelectionValue(
+          value
+        )
     );
-
-  return selectedEntries.every(
-    ([key, value]) =>
-      normalizeSelectionValue(
-        variantSelections[key]
-      ) ===
-      normalizeSelectionValue(
-        value
-      )
-  );
 }
 
 // ============================================================
@@ -449,6 +448,20 @@ ProductDetailSkeleton.displayName =
 
 export default function ProductDetailPage() {
   const params = useParams();
+  const pathname = usePathname();
+
+  // ==========================================================
+  // CLERK AUTH
+  // ==========================================================
+
+  const {
+    isLoaded: isAuthLoaded,
+    isSignedIn,
+  } = useUser();
+
+  // ==========================================================
+  // PRODUCT SLUG / ID
+  // ==========================================================
 
   const identifier = useMemo(() => {
     const value =
@@ -458,13 +471,13 @@ export default function ProductDetailPage() {
       typeof value ===
       "string"
     ) {
-      return value;
+      return value.trim();
     }
 
     if (
       Array.isArray(value)
     ) {
-      return value[0] || "";
+      return value[0]?.trim() || "";
     }
 
     return "";
@@ -502,12 +515,12 @@ export default function ProductDetailPage() {
   const [selections, setSelections] =
     useState<
       Record<string, string>
-    >({});
+    >(EMPTY_SELECTIONS);
 
   const [validationErrors, setValidationErrors] =
     useState<
       Record<string, string>
-    >({});
+    >(EMPTY_ERRORS);
 
   const [addedSuccess, setAddedSuccess] =
     useState(false);
@@ -519,110 +532,117 @@ export default function ProductDetailPage() {
     useState(1);
 
   // ==========================================================
+  // LOGIN URL
+  // ==========================================================
+
+  const loginUrl = useMemo(() => {
+    if (!pathname) {
+      return "/sign-in";
+    }
+
+    return `/sign-in?redirect_url=${encodeURIComponent(
+      pathname
+    )}`;
+  }, [pathname]);
+
+  // ==========================================================
   // FETCH PRODUCT
   // ==========================================================
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
 
-    const fetchProduct =
-      async () => {
-        if (!identifier) {
-          if (mounted) {
-            setLoading(false);
-            setNotFound(true);
-          }
+    async function fetchProduct() {
+      if (!identifier) {
+        setLoading(false);
+        setNotFound(true);
+        return;
+      }
 
+      try {
+        setLoading(true);
+        setError(false);
+        setNotFound(false);
+
+        const response =
+          await get<ProductResponse>(
+            `/api/products/${encodeURIComponent(
+              identifier
+            )}`
+          );
+
+        if (cancelled) {
           return;
         }
 
-        try {
-          setLoading(true);
-          setError(false);
-          setNotFound(false);
-
-          const response =
-            await get<ProductResponse>(
-              `/api/products/${encodeURIComponent(
-                identifier
-              )}`
-            );
-
-          if (!mounted) {
-            return;
-          }
-
-          if (
-            response?.success &&
-            response.product
-          ) {
-            setProduct(
-              response.product
-            );
-
-            setActiveImageIndex(
-              0
-            );
-
-            setSelections(
-              {}
-            );
-
-            setValidationErrors(
-              {}
-            );
-
-            setQuantity(1);
-
-            setAddedSuccess(
-              false
-            );
-          } else {
-            setNotFound(true);
-          }
-        } catch (
-          err: unknown
+        if (
+          response?.success &&
+          response.product
         ) {
-          if (!mounted) {
-            return;
-          }
+          setProduct(
+            response.product
+          );
 
-          const apiError =
-            err as {
-              status?: number;
-              message?: string;
-            };
+          setActiveImageIndex(
+            0
+          );
 
-          const message =
-            apiError?.message
-              ?.toLowerCase()
-              ?.trim() || "";
+          setSelections(
+            {}
+          );
 
-          if (
-            apiError?.status ===
-              404 ||
-            message.includes(
-              "404"
-            ) ||
-            message.includes(
-              "not found"
-            )
-          ) {
-            setNotFound(true);
-          } else {
-            setError(true);
-          }
-        } finally {
-          if (mounted) {
-            setLoading(false);
-          }
+          setValidationErrors(
+            {}
+          );
+
+          setQuantity(1);
+          setAddedSuccess(false);
+        } else {
+          setNotFound(true);
         }
-      };
+      } catch (
+        err: unknown
+      ) {
+        if (cancelled) {
+          return;
+        }
+
+        const apiError =
+          err as {
+            status?: number;
+            message?: string;
+          };
+
+        const message =
+          apiError?.message
+            ?.toLowerCase() ||
+          "";
+
+        if (
+          apiError?.status ===
+            404 ||
+          message.includes(
+            "404"
+          ) ||
+          message.includes(
+            "not found"
+          )
+        ) {
+          setNotFound(true);
+        } else {
+          setError(true);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
 
     fetchProduct();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, [
     identifier,
@@ -635,8 +655,12 @@ export default function ProductDetailPage() {
 
   const productImages =
     useMemo(() => {
+      const images =
+        product?.images;
+
       if (
-        !product?.images?.length
+        !Array.isArray(images) ||
+        images.length === 0
       ) {
         return [
           FALLBACK_IMAGE,
@@ -644,8 +668,10 @@ export default function ProductDetailPage() {
       }
 
       const validImages =
-        product.images.filter(
-          (image) =>
+        images.filter(
+          (
+            image
+          ): image is string =>
             typeof image ===
               "string" &&
             image.trim()
@@ -657,7 +683,9 @@ export default function ProductDetailPage() {
         : [
             FALLBACK_IMAGE,
           ];
-    }, [product]);
+    }, [
+      product?.images,
+    ]);
 
   const safeImageIndex =
     Math.min(
@@ -703,28 +731,46 @@ export default function ProductDetailPage() {
   // ==========================================================
 
   const fixedProductStock =
-    !isVariantPricing &&
-    typeof product?.stock ===
-      "number"
-      ? Math.max(
-          0,
-          Math.floor(
-            product.stock
-          )
+    useMemo(() => {
+      if (
+        isVariantPricing ||
+        typeof product?.stock !==
+          "number"
+      ) {
+        return 0;
+      }
+
+      return Math.max(
+        0,
+        Math.floor(
+          product.stock
         )
-      : 0;
+      );
+    }, [
+      isVariantPricing,
+      product?.stock,
+    ]);
 
   const fixedLowStockThreshold =
-    !isVariantPricing &&
-    typeof product?.lowStockThreshold ===
-      "number"
-      ? Math.max(
-          0,
-          Math.floor(
-            product.lowStockThreshold
-          )
+    useMemo(() => {
+      if (
+        isVariantPricing ||
+        typeof product?.lowStockThreshold !==
+          "number"
+      ) {
+        return 5;
+      }
+
+      return Math.max(
+        0,
+        Math.floor(
+          product.lowStockThreshold
         )
-      : 5;
+      );
+    }, [
+      isVariantPricing,
+      product?.lowStockThreshold,
+    ]);
 
   // ==========================================================
   // SELECTED VARIANT
@@ -747,14 +793,9 @@ export default function ProductDetailPage() {
             (variant) => {
               if (
                 !variant ||
-                !variant.selections
-              ) {
-                return false;
-              }
-
-              if (
+                !variant.selections ||
                 variant.status ===
-                "inactive"
+                  "inactive"
               ) {
                 return false;
               }
@@ -780,30 +821,48 @@ export default function ProductDetailPage() {
   // ==========================================================
 
   const selectedVariantStock =
-    isVariantPricing &&
-    selectedVariant &&
-    typeof selectedVariant.stock ===
-      "number"
-      ? Math.max(
-          0,
-          Math.floor(
-            selectedVariant.stock
-          )
+    useMemo(() => {
+      if (
+        !isVariantPricing ||
+        !selectedVariant ||
+        typeof selectedVariant.stock !==
+          "number"
+      ) {
+        return 0;
+      }
+
+      return Math.max(
+        0,
+        Math.floor(
+          selectedVariant.stock
         )
-      : 0;
+      );
+    }, [
+      isVariantPricing,
+      selectedVariant,
+    ]);
 
   const selectedVariantLowStockThreshold =
-    isVariantPricing &&
-    selectedVariant &&
-    typeof selectedVariant.lowStockThreshold ===
-      "number"
-      ? Math.max(
-          0,
-          Math.floor(
-            selectedVariant.lowStockThreshold
-          )
+    useMemo(() => {
+      if (
+        !isVariantPricing ||
+        !selectedVariant ||
+        typeof selectedVariant.lowStockThreshold !==
+          "number"
+      ) {
+        return 5;
+      }
+
+      return Math.max(
+        0,
+        Math.floor(
+          selectedVariant.lowStockThreshold
         )
-      : 5;
+      );
+    }, [
+      isVariantPricing,
+      selectedVariant,
+    ]);
 
   // ==========================================================
   // DISPLAY PRICE
@@ -824,15 +883,11 @@ export default function ProductDetailPage() {
           : null;
       }
 
-      if (
-        selectedVariant &&
+      return selectedVariant &&
         typeof selectedVariant.price ===
           "number"
-      ) {
-        return selectedVariant.price;
-      }
-
-      return null;
+        ? selectedVariant.price
+        : null;
     }, [
       product,
       isVariantPricing,
@@ -840,7 +895,7 @@ export default function ProductDetailPage() {
     ]);
 
   // ==========================================================
-  // ORIGINAL / MRP PRICE
+  // ORIGINAL PRICE
   // ==========================================================
 
   const displayOriginalPrice =
@@ -862,7 +917,6 @@ export default function ProductDetailPage() {
           return product.originalPrice;
         }
 
-        // Backward compatibility for older products.
         return displayPrice;
       }
 
@@ -886,29 +940,32 @@ export default function ProductDetailPage() {
     ]);
 
   // ==========================================================
-  // DISCOUNT PERCENTAGE
+  // DISCOUNT
   // ==========================================================
 
   const discountPercentage =
-    useMemo(() => {
-      return getDiscountPercentage(
+    useMemo(
+      () =>
+        getDiscountPercentage(
+          displayOriginalPrice,
+          displayPrice
+        ),
+      [
         displayOriginalPrice,
-        displayPrice
-      );
-    }, [
-      displayOriginalPrice,
-      displayPrice,
-    ]);
+        displayPrice,
+      ]
+    );
 
   const hasDiscount =
     discountPercentage > 0 &&
-    displayOriginalPrice !== null &&
+    displayOriginalPrice !==
+      null &&
     displayPrice !== null &&
     displayOriginalPrice >
       displayPrice;
 
   // ==========================================================
-  // CART QUANTITY FOR CURRENT SELECTION
+  // CURRENT CART QUANTITY
   // ==========================================================
 
   const currentCartQuantity =
@@ -930,7 +987,7 @@ export default function ProductDetailPage() {
               ) &&
             selectionsMatch(
               item.selections ||
-                {},
+                EMPTY_SELECTIONS,
               selections
             )
         );
@@ -1094,6 +1151,15 @@ export default function ProductDetailPage() {
 
         setValidationErrors(
           (previous) => {
+            if (
+              !previous[
+                selectionName
+              ] &&
+              !previous._variant
+            ) {
+              return previous;
+            }
+
             const updated = {
               ...previous,
             };
@@ -1178,18 +1244,23 @@ export default function ProductDetailPage() {
     }
 
     setQuantity(
-      (previous) =>
-        Math.min(
+      (previous) => {
+        const safe =
+          Number.isInteger(
+            previous
+          ) &&
+          previous >= 1
+            ? previous
+            : 1;
+
+        return Math.min(
           Math.max(
             1,
-            Number.isInteger(
-              previous
-            )
-              ? previous
-              : 1
+            safe
           ),
           remainingStock
-        )
+        );
+      }
     );
   }, [
     isAvailable,
@@ -1244,13 +1315,22 @@ export default function ProductDetailPage() {
         event: KeyboardEvent
       ) => {
         if (
+          event.target instanceof
+            HTMLInputElement ||
+          event.target instanceof
+            HTMLTextAreaElement ||
+          event.target instanceof
+            HTMLSelectElement
+        ) {
+          return;
+        }
+
+        if (
           event.key ===
           "ArrowLeft"
         ) {
           showPreviousImage();
-        }
-
-        if (
+        } else if (
           event.key ===
           "ArrowRight"
         ) {
@@ -1285,15 +1365,6 @@ export default function ProductDetailPage() {
         return false;
       }
 
-      const errors: Record<
-        string,
-        string
-      > = {};
-
-      let firstMissing:
-        | string
-        | null = null;
-
       if (!isAvailable) {
         setValidationErrors(
           {
@@ -1305,35 +1376,44 @@ export default function ProductDetailPage() {
         return false;
       }
 
+      const errors: Record<
+        string,
+        string
+      > = {};
+
+      let firstMissing:
+        | string
+        | null = null;
+
       // ------------------------------------------------------
       // REQUIRED OPTIONS
       // ------------------------------------------------------
 
-      orderSelections.forEach(
-        (selection) => {
-          const value =
-            selections[
-              selection.name
-            ];
+      for (
+        const selection of orderSelections
+      ) {
+        const value =
+          selections[
+            selection.name
+          ];
+
+        if (
+          selection.required &&
+          !value
+        ) {
+          errors[
+            selection.name
+          ] =
+            `Please select ${selection.name}.`;
 
           if (
-            selection.required &&
-            !value
+            !firstMissing
           ) {
-            errors[
-              selection.name
-            ] =
-              `Please select ${selection.name}.`;
-
-            if (
-              !firstMissing
-            ) {
-              firstMissing =
-                selection.name;
-            }
+            firstMissing =
+              selection.name;
           }
         }
-      );
+      }
 
       if (
         Object.keys(errors)
@@ -1497,7 +1577,7 @@ export default function ProductDetailPage() {
       }
 
       // ------------------------------------------------------
-      // FIXED PRODUCT DISCOUNT VALIDATION
+      // FIXED DISCOUNT
       // ------------------------------------------------------
 
       if (
@@ -1611,11 +1691,45 @@ export default function ProductDetailPage() {
     ]);
 
   // ==========================================================
+  // LOGIN TO ADD CART
+  // ==========================================================
+
+  const handleLoginToAddCart =
+    useCallback(() => {
+      if (!isAuthLoaded) {
+        return;
+      }
+
+      window.location.href =
+        loginUrl;
+    }, [
+      isAuthLoaded,
+      loginUrl,
+    ]);
+
+  // ==========================================================
   // ADD TO CART
   // ==========================================================
 
   const handleAddToCart =
     useCallback(async () => {
+      // ------------------------------------------------------
+      // NOT LOGGED IN
+      // ------------------------------------------------------
+
+      if (!isAuthLoaded) {
+        return;
+      }
+
+      if (!isSignedIn) {
+        handleLoginToAddCart();
+        return;
+      }
+
+      // ------------------------------------------------------
+      // NORMAL CART FLOW
+      // ------------------------------------------------------
+
       if (
         !product ||
         !isAvailable ||
@@ -1696,7 +1810,9 @@ export default function ProductDetailPage() {
           },
           2200
         );
-      } catch (err) {
+      } catch (
+        err
+      ) {
         console.error(
           "Failed to add product to cart:",
           err
@@ -1707,6 +1823,9 @@ export default function ProductDetailPage() {
         );
       }
     }, [
+      isAuthLoaded,
+      isSignedIn,
+      handleLoginToAddCart,
       product,
       isAvailable,
       isAddingToCart,
@@ -1727,6 +1846,26 @@ export default function ProductDetailPage() {
     quantity === 1
       ? "Add to Cart"
       : `Add ${quantity} to Cart`;
+
+  // ==========================================================
+  // AUTH BUTTON TEXT
+  // ==========================================================
+
+  const desktopActionText =
+    !isAuthLoaded
+      ? "Add to Cart"
+      : !isSignedIn
+      ? "Login to Add to Cart"
+      : addButtonText;
+
+  const mobileActionText =
+    !isAuthLoaded
+      ? "Add to Cart"
+      : !isSignedIn
+      ? "Login to Add"
+      : quantity === 1
+      ? "Add to Cart"
+      : `Add ${quantity}`;
 
   // ==========================================================
   // LOADING
@@ -1829,7 +1968,6 @@ export default function ProductDetailPage() {
 
       <main className="min-h-[100svh] overflow-x-hidden bg-[#F7F7F5] pb-28 pt-[76px] sm:pb-20 sm:pt-[92px] lg:pt-[100px]">
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-
           {/* ==================================================
               BREADCRUMB
           ================================================== */}
@@ -1879,28 +2017,19 @@ export default function ProductDetailPage() {
           ================================================== */}
 
           <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-2 md:gap-10 lg:gap-14 xl:gap-16">
-
             {/* =================================================
                 IMAGES
             ================================================= */}
 
             <section className="min-w-0">
               <div className="group relative aspect-square w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white shadow-[0_4px_20px_-16px_rgba(10,27,46,0.3)]">
-
                 <Image
-                  src={
-                    activeImage
-                  }
-                  alt={
-                    product.name
-                  }
+                  src={activeImage}
+                  alt={product.name}
                   fill
                   priority
-                  sizes="
-                    (max-width: 767px) 100vw,
-                    (max-width: 1200px) 50vw,
-                    600px
-                  "
+                  fetchPriority="high"
+                  sizes="(max-width: 767px) 100vw, (max-width: 1200px) 50vw, 600px"
                   className="object-cover transition-transform duration-300 ease-out md:group-hover:scale-[1.015]"
                 />
 
@@ -1918,30 +2047,7 @@ export default function ProductDetailPage() {
                         showPreviousImage
                       }
                       aria-label="Previous image"
-                      className="
-                        absolute
-                        left-2
-                        top-1/2
-                        flex
-                        h-9
-                        w-9
-                        -translate-y-1/2
-                        items-center
-                        justify-center
-                        rounded-full
-                        border
-                        border-white/80
-                        bg-white/95
-                        text-[#0A1B2E]
-                        shadow-sm
-                        transition-colors
-                        duration-150
-                        hover:bg-white
-                        active:bg-[#F7F7F5]
-                        sm:left-4
-                        sm:h-10
-                        sm:w-10
-                      "
+                      className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/95 text-[#0A1B2E] shadow-sm transition-colors duration-150 hover:bg-white active:bg-[#F7F7F5] sm:left-4 sm:h-10 sm:w-10"
                     >
                       <ChevronLeftIcon />
                     </button>
@@ -1952,30 +2058,7 @@ export default function ProductDetailPage() {
                         showNextImage
                       }
                       aria-label="Next image"
-                      className="
-                        absolute
-                        right-2
-                        top-1/2
-                        flex
-                        h-9
-                        w-9
-                        -translate-y-1/2
-                        items-center
-                        justify-center
-                        rounded-full
-                        border
-                        border-white/80
-                        bg-white/95
-                        text-[#0A1B2E]
-                        shadow-sm
-                        transition-colors
-                        duration-150
-                        hover:bg-white
-                        active:bg-[#F7F7F5]
-                        sm:right-4
-                        sm:h-10
-                        sm:w-10
-                      "
+                      className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/80 bg-white/95 text-[#0A1B2E] shadow-sm transition-colors duration-150 hover:bg-white active:bg-[#F7F7F5] sm:right-4 sm:h-10 sm:w-10"
                     >
                       <ChevronRightIcon />
                     </button>
@@ -2030,25 +2113,11 @@ export default function ProductDetailPage() {
                               ? "true"
                               : undefined
                           }
-                          className={`
-                            relative
-                            h-[66px]
-                            w-[66px]
-                            shrink-0
-                            overflow-hidden
-                            rounded-[9px]
-                            border-2
-                            bg-white
-                            transition-[border-color,box-shadow]
-                            duration-150
-                            sm:h-[76px]
-                            sm:w-[76px]
-                            ${
-                              selected
-                                ? "border-[#B9954F] shadow-[0_2px_10px_rgba(185,149,79,0.18)]"
-                                : "border-transparent hover:border-[#D8DDE3]"
-                            }
-                          `}
+                          className={`relative h-[66px] w-[66px] shrink-0 overflow-hidden rounded-[9px] border-2 bg-white transition-[border-color,box-shadow] duration-150 sm:h-[76px] sm:w-[76px] ${
+                            selected
+                              ? "border-[#B9954F] shadow-[0_2px_10px_rgba(185,149,79,0.18)]"
+                              : "border-transparent hover:border-[#D8DDE3]"
+                          }`}
                         >
                           <Image
                             src={
@@ -2059,6 +2128,12 @@ export default function ProductDetailPage() {
                               1
                             }`}
                             fill
+                            loading={
+                              index <
+                              3
+                                ? "eager"
+                                : "lazy"
+                            }
                             sizes="76px"
                             className="object-cover"
                           />
@@ -2075,7 +2150,6 @@ export default function ProductDetailPage() {
             ================================================= */}
 
             <section className="min-w-0 md:pt-1 lg:pt-2">
-
               {/* CATEGORY */}
 
               <Link
@@ -2091,7 +2165,7 @@ export default function ProductDetailPage() {
                 {product.name}
               </h1>
 
-              {/* PRICE + DISCOUNT */}
+              {/* PRICE */}
 
               <div className="mt-4">
                 {displayPrice !==
@@ -2099,7 +2173,11 @@ export default function ProductDetailPage() {
                   <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                     {hasDiscount && (
                       <span className="inline-flex items-center rounded-[5px] bg-[#E8F5E9] px-2 py-1 text-[10px] font-extrabold text-[#15803D] sm:text-[11px]">
-                        ↓{discountPercentage}%
+                        ↓
+                        {
+                          discountPercentage
+                        }
+                        %
                       </span>
                     )}
 
@@ -2140,15 +2218,17 @@ export default function ProductDetailPage() {
                     You save{" "}
                     <span className="font-extrabold text-[#15803D]">
                       {formatPrice(
-                        (displayOriginalPrice ?? 0) -
-                          (displayPrice ?? 0)
+                        (displayOriginalPrice ??
+                          0) -
+                          (displayPrice ??
+                            0)
                       )}
                     </span>
                   </p>
                 )}
               </div>
 
-              {/* STOCK PILL */}
+              {/* STOCK */}
 
               {isAvailable &&
                 hasSelectedVariant && (
@@ -2198,9 +2278,7 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* =================================================
-                  OPTIONS
-              ================================================= */}
+              {/* OPTIONS */}
 
               {isAvailable &&
                 orderSelections.length >
@@ -2243,20 +2321,11 @@ export default function ProductDetailPage() {
                                   </h2>
 
                                   <span
-                                    className={`
-                                      rounded-full
-                                      px-2
-                                      py-0.5
-                                      text-[8px]
-                                      font-extrabold
-                                      uppercase
-                                      tracking-[0.1em]
-                                      ${
-                                        selection.required
-                                          ? "bg-[#EEEBDD] text-[#8B6E32]"
-                                          : "bg-[#F1F5F9] text-[#94A3B8]"
-                                      }
-                                    `}
+                                    className={`rounded-full px-2 py-0.5 text-[8px] font-extrabold uppercase tracking-[0.1em] ${
+                                      selection.required
+                                        ? "bg-[#EEEBDD] text-[#8B6E32]"
+                                        : "bg-[#F1F5F9] text-[#94A3B8]"
+                                    }`}
                                   >
                                     {selection.required
                                       ? "Required"
@@ -2304,28 +2373,13 @@ export default function ProductDetailPage() {
                                       disabled={
                                         !available
                                       }
-                                      className={`
-                                        min-h-11
-                                        rounded-[9px]
-                                        border
-                                        px-4
-                                        py-2
-                                        text-sm
-                                        font-bold
-                                        transition-[background-color,border-color,color]
-                                        duration-150
-                                        focus-visible:outline-none
-                                        focus-visible:ring-2
-                                        focus-visible:ring-[#B9954F]
-                                        focus-visible:ring-offset-2
-                                        ${
-                                          isSelected
-                                            ? "border-[#0A1B2E] bg-[#0A1B2E] text-white"
-                                            : available
-                                            ? "border-[#DDE2E7] bg-white text-[#0A1B2E] hover:border-[#B9954F] hover:bg-[#FBFAF6]"
-                                            : "cursor-not-allowed border-[#E5E7EB] bg-[#F1F5F9] text-[#B8C0CA] line-through opacity-60"
-                                        }
-                                      `}
+                                      className={`min-h-11 rounded-[9px] border px-4 py-2 text-sm font-bold transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 ${
+                                        isSelected
+                                          ? "border-[#0A1B2E] bg-[#0A1B2E] text-white"
+                                          : available
+                                          ? "border-[#DDE2E7] bg-white text-[#0A1B2E] hover:border-[#B9954F] hover:bg-[#FBFAF6]"
+                                          : "cursor-not-allowed border-[#E5E7EB] bg-[#F1F5F9] text-[#B8C0CA] line-through opacity-60"
+                                      }`}
                                     >
                                       <span className="flex items-center gap-2">
                                         {isSelected && (
@@ -2358,9 +2412,7 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-              {/* =================================================
-                  VARIANT STOCK BOX
-              ================================================= */}
+              {/* VARIANT STOCK */}
 
               {isAvailable &&
                 isVariantPricing &&
@@ -2412,9 +2464,7 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-              {/* =================================================
-                  FIXED STOCK
-              ================================================= */}
+              {/* FIXED STOCK */}
 
               {isAvailable &&
                 !isVariantPricing &&
@@ -2454,9 +2504,7 @@ export default function ProductDetailPage() {
                   </div>
                 )}
 
-              {/* =================================================
-                  QUANTITY
-              ================================================= */}
+              {/* QUANTITY */}
 
               {isAvailable && (
                 <div className="mt-6 rounded-[10px] border border-[#E5E7EB] bg-white p-4 sm:mt-7 sm:p-5">
@@ -2529,8 +2577,7 @@ export default function ProductDetailPage() {
                     </div>
                   </div>
 
-                  {isAvailable &&
-                    hasSelectedVariant &&
+                  {hasSelectedVariant &&
                     remainingStock >
                       0 && (
                       <p className="mt-3 text-[11px] font-medium text-[#64748B]">
@@ -2545,8 +2592,7 @@ export default function ProductDetailPage() {
                       </p>
                     )}
 
-                  {isAvailable &&
-                    hasSelectedVariant &&
+                  {hasSelectedVariant &&
                     remainingStock <=
                       0 && (
                       <p className="mt-3 text-[11px] font-bold text-red-600">
@@ -2580,9 +2626,7 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* =================================================
-                  UNAVAILABLE
-              ================================================= */}
+              {/* UNAVAILABLE */}
 
               {!isAvailable && (
                 <div className="mt-6 rounded-[10px] border border-[#E5E7EB] bg-white p-5">
@@ -2600,7 +2644,7 @@ export default function ProductDetailPage() {
               )}
 
               {/* =================================================
-                  DESKTOP ADD BUTTON
+                  DESKTOP ADD / LOGIN BUTTON
               ================================================= */}
 
               {isAvailable && (
@@ -2611,38 +2655,23 @@ export default function ProductDetailPage() {
                       handleAddToCart
                     }
                     disabled={
+                      !isAuthLoaded ||
                       isAddingToCart ||
-                      !hasSelectedVariant ||
-                      isCurrentSelectionOutOfStock ||
-                      remainingStock <=
-                        0
+                      (
+                        isSignedIn &&
+                        (
+                          !hasSelectedVariant ||
+                          isCurrentSelectionOutOfStock ||
+                          remainingStock <=
+                            0
+                        )
+                      )
                     }
-                    className={`
-                      flex
-                      h-14
-                      w-full
-                      items-center
-                      justify-center
-                      gap-2
-                      rounded-[9px]
-                      px-5
-                      text-base
-                      font-extrabold
-                      text-white
-                      transition-colors
-                      duration-150
-                      focus-visible:outline-none
-                      focus-visible:ring-2
-                      focus-visible:ring-[#B9954F]
-                      focus-visible:ring-offset-2
-                      disabled:cursor-not-allowed
-                      disabled:opacity-60
-                      ${
-                        addedSuccess
-                          ? "bg-[#16A34A]"
-                          : "bg-[#0A1B2E] hover:bg-[#142C46]"
-                      }
-                    `}
+                    className={`flex h-14 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-base font-extrabold text-white transition-[background-color,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      addedSuccess
+                        ? "bg-[#16A34A]"
+                        : "bg-[#0A1B2E] hover:bg-[#142C46] active:scale-[0.995]"
+                    }`}
                   >
                     {isAddingToCart ? (
                       <>
@@ -2654,6 +2683,10 @@ export default function ProductDetailPage() {
                         <CheckIcon />
                         Added to Cart
                       </>
+                    ) : !isAuthLoaded ? (
+                      "Loading..."
+                    ) : !isSignedIn ? (
+                      "Login to Add to Cart"
                     ) : !hasSelectedVariant ? (
                       "Select Options"
                     ) : isCurrentSelectionOutOfStock ? (
@@ -2662,9 +2695,18 @@ export default function ProductDetailPage() {
                       0 ? (
                       "Maximum in Cart"
                     ) : (
-                      addButtonText
+                      desktopActionText
                     )}
                   </button>
+
+                  {!isSignedIn &&
+                    isAuthLoaded && (
+                      <p className="mt-2 text-center text-[11px] text-[#64748B]">
+                        Please login to add
+                        this product to
+                        your cart.
+                      </p>
+                    )}
 
                   {addedSuccess && (
                     <div className="mt-3 text-center">
@@ -2679,9 +2721,7 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* =================================================
-                  PRODUCT OPTIONS INFO
-              ================================================= */}
+              {/* PRODUCT OPTIONS INFO */}
 
               {productOptions.length >
                 0 && (
@@ -2715,26 +2755,11 @@ export default function ProductDetailPage() {
       </main>
 
       {/* ========================================================
-          MOBILE STICKY ADD TO CART
+          MOBILE STICKY ADD / LOGIN
       ======================================================== */}
 
       {isAvailable && (
-        <div
-          className="
-            fixed
-            inset-x-0
-            bottom-0
-            z-40
-            border-t
-            border-[#E5E7EB]
-            bg-white
-            px-3
-            pb-[calc(0.75rem+env(safe-area-inset-bottom))]
-            pt-3
-            shadow-[0_-8px_30px_rgba(10,27,46,0.08)]
-            sm:hidden
-          "
-        >
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#E5E7EB] bg-white px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(10,27,46,0.08)] sm:hidden">
           <div className="mx-auto flex w-full max-w-xl items-center gap-3">
             {/* PRICE INFO */}
 
@@ -2751,7 +2776,11 @@ export default function ProductDetailPage() {
                   <div className="flex items-center gap-1.5">
                     {hasDiscount && (
                       <span className="rounded-[4px] bg-[#E8F5E9] px-1.5 py-0.5 text-[8px] font-extrabold text-[#15803D]">
-                        ↓{discountPercentage}%
+                        ↓
+                        {
+                          discountPercentage
+                        }
+                        %
                       </span>
                     )}
 
@@ -2773,7 +2802,11 @@ export default function ProductDetailPage() {
                   </div>
 
                   <p className="mt-0.5 truncate text-[9px] font-medium text-[#64748B]">
-                    {!hasSelectedVariant
+                    {!isAuthLoaded
+                      ? "Checking login..."
+                      : !isSignedIn
+                      ? "Login required"
+                      : !hasSelectedVariant
                       ? "Select options"
                       : isCurrentSelectionOutOfStock
                       ? "Out of stock"
@@ -2801,36 +2834,23 @@ export default function ProductDetailPage() {
                 handleAddToCart
               }
               disabled={
+                !isAuthLoaded ||
                 isAddingToCart ||
-                !hasSelectedVariant ||
-                isCurrentSelectionOutOfStock ||
-                remainingStock <=
-                  0
+                (
+                  isSignedIn &&
+                  (
+                    !hasSelectedVariant ||
+                    isCurrentSelectionOutOfStock ||
+                    remainingStock <=
+                      0
+                  )
+                )
               }
-              className={`
-                flex
-                h-12
-                min-w-[142px]
-                shrink-0
-                items-center
-                justify-center
-                gap-2
-                rounded-[9px]
-                px-3
-                text-xs
-                font-extrabold
-                text-white
-                transition-colors
-                duration-150
-                active:bg-[#081827]
-                disabled:cursor-not-allowed
-                disabled:opacity-60
-                ${
-                  addedSuccess
-                    ? "bg-[#16A34A]"
-                    : "bg-[#0A1B2E]"
-                }
-              `}
+              className={`flex h-12 min-w-[142px] shrink-0 items-center justify-center gap-2 rounded-[9px] px-3 text-xs font-extrabold text-white transition-[background-color,transform] duration-150 active:scale-[0.98] active:bg-[#081827] disabled:cursor-not-allowed disabled:opacity-60 ${
+                addedSuccess
+                  ? "bg-[#16A34A]"
+                  : "bg-[#0A1B2E]"
+              }`}
             >
               {isAddingToCart ? (
                 <>
@@ -2842,6 +2862,10 @@ export default function ProductDetailPage() {
                   <CheckIcon />
                   Added
                 </>
+              ) : !isAuthLoaded ? (
+                "Loading..."
+              ) : !isSignedIn ? (
+                mobileActionText
               ) : !hasSelectedVariant ? (
                 "Select Options"
               ) : isCurrentSelectionOutOfStock ? (

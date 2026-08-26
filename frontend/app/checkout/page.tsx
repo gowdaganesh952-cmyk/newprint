@@ -11,8 +11,24 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
-import { useCart } from "@/app/components/cart/CartProvider";
 import Navbar from "@/app/components/Navbar";
+import {
+  useCart,
+  type PrintUnit,
+} from "@/app/components/cart/CartProvider";
+
+/* ============================================================
+   CONFIG
+============================================================ */
+
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000";
+
+const RAZORPAY_SCRIPT =
+  "https://checkout.razorpay.com/v1/checkout.js";
+
+const MAX_PRINT_IMAGES = 6;
 
 /* ============================================================
    TYPES
@@ -42,7 +58,9 @@ interface Address {
 
 interface RazorpayResponse {
   razorpay_payment_id: string;
+
   razorpay_order_id: string;
+
   razorpay_signature: string;
 }
 
@@ -65,7 +83,10 @@ interface RazorpayOptions {
     email?: string;
   };
 
-  notes?: Record<string, string>;
+  notes?: Record<
+    string,
+    string
+  >;
 
   theme?: {
     color?: string;
@@ -84,10 +105,6 @@ interface RazorpayInstance {
   open: () => void;
 }
 
-/* ============================================================
-   GLOBAL
-============================================================ */
-
 declare global {
   interface Window {
     Razorpay?: new (
@@ -97,89 +114,129 @@ declare global {
 }
 
 /* ============================================================
-   CONFIG
+   HELPERS
 ============================================================ */
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:5000";
+function formatPrice(
+  value: number
+) {
+  return `₹${Number(
+    value || 0
+  ).toLocaleString(
+    "en-IN"
+  )}`;
+}
 
-const RAZORPAY_SCRIPT =
-  "https://checkout.razorpay.com/v1/checkout.js";
+/* ============================================================
+   RAZORPAY SCRIPT
+============================================================ */
+
+let razorpayPromise:
+  | Promise<boolean>
+  | null = null;
+
+function loadRazorpay(): Promise<boolean> {
+  if (
+    typeof window !==
+      "undefined" &&
+    window.Razorpay
+  ) {
+    return Promise.resolve(
+      true
+    );
+  }
+
+  if (razorpayPromise) {
+    return razorpayPromise;
+  }
+
+  razorpayPromise =
+    new Promise<boolean>(
+      (resolve) => {
+        const existing =
+          document.querySelector(
+            `script[src="${RAZORPAY_SCRIPT}"]`
+          ) as HTMLScriptElement | null;
+
+        if (existing) {
+          if (
+            existing.dataset
+              .loaded === "true"
+          ) {
+            resolve(
+              Boolean(
+                window.Razorpay
+              )
+            );
+
+            return;
+          }
+
+          existing.addEventListener(
+            "load",
+            () =>
+              resolve(
+                Boolean(
+                  window.Razorpay
+                )
+              ),
+            {
+              once: true,
+            }
+          );
+
+          existing.addEventListener(
+            "error",
+            () => resolve(false),
+            {
+              once: true,
+            }
+          );
+
+          return;
+        }
+
+        const script =
+          document.createElement(
+            "script"
+          );
+
+        script.src =
+          RAZORPAY_SCRIPT;
+
+        script.async = true;
+
+        script.onload = () => {
+          script.dataset.loaded =
+            "true";
+
+          resolve(
+            Boolean(
+              window.Razorpay
+            )
+          );
+        };
+
+        script.onerror = () => {
+          resolve(false);
+        };
+
+        document.body.appendChild(
+          script
+        );
+      }
+    ).finally(() => {
+      razorpayPromise = null;
+    });
+
+  return razorpayPromise;
+}
 
 /* ============================================================
    ICONS
 ============================================================ */
 
 function ArrowLeftIcon({
-  size = 18,
-}: {
-  size?: number;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M19 12H5" />
-      <path d="m12 19-7-7 7-7" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon({
-  size = 18,
-}: {
-  size?: number;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
-}
-
-function CheckIcon({
-  size = 16,
-}: {
-  size?: number;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m5 12 4 4L19 6" />
-    </svg>
-  );
-}
-
-function PlusIcon({
   size = 17,
 }: {
   size?: number;
@@ -194,7 +251,71 @@ function PlusIcon({
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
+    >
+      <path d="M19 12H5" />
+      <path d="m12 19-7-7 7-7" />
+    </svg>
+  );
+}
+
+function ArrowRightIcon({
+  size = 17,
+}: {
+  size?: number;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </svg>
+  );
+}
+
+function CheckIcon({
+  size = 15,
+}: {
+  size?: number;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m5 12 4 4L19 6" />
+    </svg>
+  );
+}
+
+function PlusIcon({
+  size = 16,
+}: {
+  size?: number;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
       <path d="M12 5v14" />
       <path d="M5 12h14" />
@@ -202,7 +323,33 @@ function PlusIcon({
   );
 }
 
-function MapPinIcon() {
+function MapPinIcon({
+  size = 17,
+}: {
+  size?: number;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+      <circle
+        cx="12"
+        cy="10"
+        r="2.5"
+      />
+    </svg>
+  );
+}
+
+function ShieldIcon() {
   return (
     <svg
       width="17"
@@ -213,26 +360,6 @@ function MapPinIcon() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="2.5" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
     >
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
       <path d="m9 12 2 2 4-4" />
@@ -251,7 +378,6 @@ function CardIcon() {
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
     >
       <rect
         x="3"
@@ -266,125 +392,47 @@ function CardIcon() {
   );
 }
 
-/* ============================================================
-   HELPERS
-============================================================ */
-
-function formatPrice(
-  value: number
-): string {
-  return `₹${Number(
-    value || 0
-  ).toLocaleString("en-IN")}`;
-}
-
-/* ============================================================
-   RAZORPAY SCRIPT
-============================================================ */
-
-function loadRazorpayScript(): Promise<boolean> {
-  return new Promise(
-    (resolve) => {
-      if (
-        typeof window !==
-          "undefined" &&
-        window.Razorpay
-      ) {
-        resolve(true);
-        return;
-      }
-
-      const existing =
-        document.querySelector(
-          `script[src="${RAZORPAY_SCRIPT}"]`
-        );
-
-      if (existing) {
-        if (
-          (
-            existing as HTMLScriptElement
-          ).dataset.loaded ===
-          "true"
-        ) {
-          resolve(
-            Boolean(
-              window.Razorpay
-            )
-          );
-
-          return;
-        }
-
-        const handleLoad =
-          () => {
-            (
-              existing as HTMLScriptElement
-            ).dataset.loaded =
-              "true";
-
-            resolve(
-              Boolean(
-                window.Razorpay
-              )
-            );
-          };
-
-        const handleError =
-          () =>
-            resolve(false);
-
-        existing.addEventListener(
-          "load",
-          handleLoad,
-          {
-            once: true,
-          }
-        );
-
-        existing.addEventListener(
-          "error",
-          handleError,
-          {
-            once: true,
-          }
-        );
-
-        return;
-      }
-
-      const script =
-        document.createElement(
-          "script"
-        );
-
-      script.src =
-        RAZORPAY_SCRIPT;
-
-      script.async = true;
-
-      script.onload = () => {
-        script.dataset.loaded =
-          "true";
-
-        resolve(
-          Boolean(
-            window.Razorpay
-          )
-        );
-      };
-
-      script.onerror = () =>
-        resolve(false);
-
-      document.body.appendChild(
-        script
-      );
-    }
+function AlertIcon() {
+  return (
+    <svg
+      width="17"
+      height="17"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 3.8 2.5 17a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3l-7.8-13.2a2 2 0 0 0-3.4 0Z" />
+    </svg>
   );
 }
 
 /* ============================================================
-   LOADING SKELETON
+   SPINNER
+============================================================ */
+
+function Spinner() {
+  return (
+    <span
+      className="
+        h-4
+        w-4
+        animate-spin
+        rounded-full
+        border-2
+        border-white/30
+        border-t-white
+      "
+    />
+  );
+}
+
+/* ============================================================
+   SKELETON
 ============================================================ */
 
 function CheckoutSkeleton() {
@@ -394,22 +442,20 @@ function CheckoutSkeleton() {
 
       <main className="mx-auto w-full max-w-7xl px-4 pb-24 pt-[92px] sm:px-6 sm:pt-[106px] lg:px-8">
         <div className="animate-pulse">
-          <div className="h-4 w-28 rounded bg-[#E5E7EB]" />
+          <div className="h-3 w-24 rounded bg-[#E5E7EB]" />
 
-          <div className="mt-4 h-8 w-48 rounded bg-[#E5E7EB]" />
+          <div className="mt-4 h-9 w-48 rounded bg-[#E5E7EB]" />
 
-          <div className="mt-2 h-4 w-72 max-w-full rounded bg-[#E5E7EB]" />
+          <div className="mt-3 h-3 w-72 max-w-full rounded bg-[#E5E7EB]" />
 
-          <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-8">
+          <div className="mt-7 grid grid-cols-1 gap-5 lg:grid-cols-12">
             <div className="space-y-5 lg:col-span-8">
-              <div className="h-64 rounded-[12px] bg-white" />
-
-              <div className="h-72 rounded-[12px] bg-white" />
-
+              <div className="h-60 rounded-[12px] bg-white" />
+              <div className="h-80 rounded-[12px] bg-white" />
               <div className="h-40 rounded-[12px] bg-white" />
             </div>
 
-            <div className="h-80 rounded-[12px] bg-white lg:col-span-4" />
+            <div className="hidden h-[500px] rounded-[12px] bg-white lg:col-span-4 lg:block" />
           </div>
         </div>
       </main>
@@ -427,31 +473,37 @@ function AddressCard({
   onSelect,
 }: {
   address: Address;
+
   selected: boolean;
+
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={selected}
       className={`
         w-full
         rounded-[10px]
         border
         p-3.5
         text-left
-        transition-colors
+        outline-none
+        transition-[border-color,background-color,box-shadow]
         duration-150
+        focus-visible:ring-2
+        focus-visible:ring-[#B9954F]
         sm:p-4
         ${
           selected
-            ? "border-[#0A1B2E] bg-[#F8FAFC] ring-1 ring-[#0A1B2E]"
-            : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1] hover:bg-[#FCFCFB]"
+            ? "border-[#0A1B2E] bg-[#F8FAFC] shadow-[0_0_0_1px_#0A1B2E]"
+            : "border-[#E5E7EB] bg-white hover:border-[#CBD5E1]"
         }
       `}
     >
       <div className="flex items-start gap-3">
-        <div
+        <span
           className={`
             mt-0.5
             flex
@@ -465,29 +517,29 @@ function AddressCard({
             ${
               selected
                 ? "border-[#0A1B2E] bg-[#0A1B2E] text-white"
-                : "border-[#CBD5E1] bg-white"
+                : "border-[#CBD5E1]"
             }
           `}
         >
           {selected && (
             <CheckIcon size={12} />
           )}
-        </div>
+        </span>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-extrabold text-[#0A1B2E]">
               {address.fullName}
             </p>
 
             {address.isDefault && (
-              <span className="rounded-full bg-[#F5F2E8] px-2 py-0.5 text-[9px] font-extrabold tracking-wide text-[#8B6E32]">
+              <span className="rounded-full bg-[#F5F2E8] px-2 py-0.5 text-[9px] font-extrabold text-[#8B6E32]">
                 DEFAULT
               </span>
             )}
           </div>
 
-          <p className="mt-1 text-[11px] font-semibold text-[#64748B]">
+          <p className="mt-1 text-[10px] font-semibold text-[#64748B]">
             {address.phone}
           </p>
 
@@ -522,6 +574,119 @@ function AddressCard({
 }
 
 /* ============================================================
+   PRINT IMAGE STRIP
+============================================================ */
+
+function PrintImages({
+  units,
+}: {
+  units: PrintUnit[];
+}) {
+  const images =
+    units.flatMap(
+      (
+        unit,
+        unitIndex
+      ) =>
+        unit.images
+          .slice(
+            0,
+            MAX_PRINT_IMAGES
+          )
+          .map(
+            (
+              image,
+              imageIndex
+            ) => ({
+              ...image,
+
+              key:
+                `${unit.unitId}-${imageIndex}`,
+
+              unitIndex,
+            })
+          )
+    );
+
+  if (
+    images.length === 0
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[9px] font-extrabold uppercase tracking-[0.12em] text-[#94A3B8]">
+          Print images
+        </p>
+
+        <p className="text-[9px] font-bold text-green-700">
+          {images.length}{" "}
+          uploaded
+        </p>
+      </div>
+
+      <div
+        className="
+          flex
+          gap-2
+          overflow-x-auto
+          overscroll-x-contain
+          pb-1
+          [scrollbar-width:none]
+          [&::-webkit-scrollbar]:hidden
+        "
+      >
+        {images.map(
+          (
+            image
+          ) => (
+            <div
+              key={
+                image.key
+              }
+              className="
+                relative
+                h-16
+                w-16
+                shrink-0
+                overflow-hidden
+                rounded-[7px]
+                border
+                border-[#DDE2E7]
+                bg-white
+                sm:h-20
+                sm:w-20
+              "
+            >
+              <img
+                src={
+                  image.url
+                }
+                alt={`Print ${
+                  image.unitIndex +
+                  1
+                }`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                decoding="async"
+              />
+
+              <span className="absolute bottom-1 left-1 rounded-[4px] bg-[#0A1B2E]/85 px-1.5 py-0.5 text-[8px] font-extrabold text-white">
+                P
+                {image.unitIndex +
+                  1}
+              </span>
+            </div>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    PAGE
 ============================================================ */
 
@@ -537,20 +702,31 @@ export default function CheckoutPage() {
 
   const {
     items,
+
     subtotal,
+
+    shippingCharge,
+
+    total,
+
     itemCount,
-    isInitializing,
-    isCartPrintReady,
+
+    loading,
+
+    updating,
+
   } = useCart();
 
   /* ==========================================================
-     ADDRESS STATE
+     STATE
   ========================================================== */
 
   const [
     addresses,
     setAddresses,
-  ] = useState<Address[]>([]);
+  ] = useState<Address[]>(
+    []
+  );
 
   const [
     selectedAddressId,
@@ -560,68 +736,38 @@ export default function CheckoutPage() {
   >(null);
 
   const [
-    isLoadingAddresses,
-    setIsLoadingAddresses,
+    addressLoading,
+    setAddressLoading,
   ] = useState(true);
 
-  /* ==========================================================
-     PAYMENT STATE
-  ========================================================== */
-
   const [
-    isCreatingPayment,
-    setIsCreatingPayment,
+    paymentLoading,
+    setPaymentLoading,
   ] = useState(false);
 
   const [
-    isVerifyingPayment,
-    setIsVerifyingPayment,
+    verifying,
+    setVerifying,
   ] = useState(false);
 
-  /* ==========================================================
-     ERROR STATE
-  ========================================================== */
-
   const [
-    pageError,
-    setPageError,
-  ] = useState<
-    string | null
-  >(null);
-
-  const [
-    paymentError,
-    setPaymentError,
+    error,
+    setError,
   ] = useState<
     string | null
   >(null);
 
   /* ==========================================================
-     DELIVERY
-  ========================================================== */
-
-  const deliveryFee = 0;
-
-  const totalAmount =
-    useMemo(
-      () =>
-        Number(subtotal || 0) +
-        Number(deliveryFee),
-      [
-        subtotal,
-        deliveryFee,
-      ]
-    );
-
-  /* ==========================================================
-     SELECTED ADDRESS
+     DERIVED
   ========================================================== */
 
   const selectedAddress =
     useMemo(
       () =>
         addresses.find(
-          (address) =>
+          (
+            address
+          ) =>
             address._id ===
             selectedAddressId
         ) || null,
@@ -631,16 +777,64 @@ export default function CheckoutPage() {
       ]
     );
 
+  const isPrintReady =
+    useMemo(() => {
+      if (
+        items.length === 0
+      ) {
+        return false;
+      }
+
+      return items.every(
+        (item) => {
+          const quantity =
+            Math.max(
+              1,
+              Number(
+                item.quantity
+              ) || 1
+            );
+
+          if (
+            item.printUnits
+              .length !==
+            quantity
+          ) {
+            return false;
+          }
+
+          return item.printUnits.every(
+            (
+              unit
+            ) =>
+              unit.images.length >=
+                1 &&
+              unit.images.length <=
+                MAX_PRINT_IMAGES
+          );
+        }
+      );
+    }, [items]);
+
+  const busy =
+    paymentLoading ||
+    verifying ||
+    updating;
+
   /* ==========================================================
-     AUTH REDIRECT
+     AUTH
   ========================================================== */
 
   useEffect(() => {
-    if (!isLoaded) {
+    if (
+      !isLoaded
+    ) {
       return;
     }
 
-    if (!isSignedIn) {
+    if (
+      !isSignedIn
+    ) {
       router.replace(
         "/sign-in?redirect_url=/checkout"
       );
@@ -663,16 +857,13 @@ export default function CheckoutPage() {
       return;
     }
 
-    let cancelled = false;
+    let cancelled =
+      false;
 
-    const fetchAddresses =
+    const load =
       async () => {
-        setIsLoadingAddresses(
+        setAddressLoading(
           true
-        );
-
-        setPageError(
-          null
         );
 
         try {
@@ -689,14 +880,13 @@ export default function CheckoutPage() {
             await fetch(
               `${API_URL}/api/addresses`,
               {
-                method: "GET",
-
                 headers: {
                   Authorization:
                     `Bearer ${token}`,
                 },
 
-                cache: "no-store",
+                cache:
+                  "no-store",
               }
             );
 
@@ -713,11 +903,11 @@ export default function CheckoutPage() {
           ) {
             throw new Error(
               data?.message ||
-                "Failed to load addresses."
+                "Unable to load addresses."
             );
           }
 
-          const loadedAddresses =
+          const loaded =
             Array.isArray(
               data.addresses
             )
@@ -731,22 +921,16 @@ export default function CheckoutPage() {
           }
 
           setAddresses(
-            loadedAddresses
+            loaded
           );
 
-          const defaultAddress =
-            loadedAddresses.find(
-              (
-                address: Address
-              ) =>
-                address.isDefault
-            );
-
           setSelectedAddressId(
-            (current) => {
+            (
+              current
+            ) => {
               if (
                 current &&
-                loadedAddresses.some(
+                loaded.some(
                   (
                     address: Address
                   ) =>
@@ -758,42 +942,42 @@ export default function CheckoutPage() {
               }
 
               return (
-                defaultAddress?._id ||
-                loadedAddresses[0]?._id ||
+                loaded.find(
+                  (
+                    address: Address
+                  ) =>
+                    address.isDefault
+                )?._id ||
+                loaded[0]?._id ||
                 null
               );
             }
           );
         } catch (
-          error
+          requestError
         ) {
-          console.error(
-            "Load addresses error:",
-            error
-          );
-
           if (
             !cancelled
           ) {
-            setPageError(
-              error instanceof
+            setError(
+              requestError instanceof
                 Error
-                ? error.message
-                : "Failed to load addresses."
+                ? requestError.message
+                : "Unable to load addresses."
             );
           }
         } finally {
           if (
             !cancelled
           ) {
-            setIsLoadingAddresses(
+            setAddressLoading(
               false
             );
           }
         }
       };
 
-    fetchAddresses();
+    load();
 
     return () => {
       cancelled = true;
@@ -808,21 +992,18 @@ export default function CheckoutPage() {
      VERIFY PAYMENT
   ========================================================== */
 
-  const verifyRazorpayPayment =
+  const verifyPayment =
     useCallback(
       async (
-        razorpayResponse: RazorpayResponse
+        response:
+          RazorpayResponse
       ) => {
         try {
-          setIsCreatingPayment(
-            false
-          );
-
-          setIsVerifyingPayment(
+          setVerifying(
             true
           );
 
-          setPaymentError(
+          setError(
             null
           );
 
@@ -835,7 +1016,7 @@ export default function CheckoutPage() {
             );
           }
 
-          const response =
+          const result =
             await fetch(
               `${API_URL}/api/orders/verify-payment`,
               {
@@ -853,28 +1034,40 @@ export default function CheckoutPage() {
                 body:
                   JSON.stringify({
                     razorpay_payment_id:
-                      razorpayResponse.razorpay_payment_id,
+                      response.razorpay_payment_id,
 
                     razorpay_order_id:
-                      razorpayResponse.razorpay_order_id,
+                      response.razorpay_order_id,
 
                     razorpay_signature:
-                      razorpayResponse.razorpay_signature,
+                      response.razorpay_signature,
                   }),
               }
             );
 
           const data =
-            await response
+            await result
               .json()
               .catch(
                 () => null
               );
 
           if (
-            !response.ok ||
+            !result.ok ||
             !data?.success
           ) {
+            if (
+              data?.paymentReceived
+            ) {
+              throw new Error(
+                `${data.message || "Payment was received, but the order needs support review."} Order: ${
+                  data.order
+                    ?.orderNumber ||
+                  ""
+                }`
+              );
+            }
+
             throw new Error(
               data?.message ||
                 "Payment verification failed."
@@ -888,12 +1081,15 @@ export default function CheckoutPage() {
             data.order
               ?.orderNumber;
 
-          if (orderId) {
+          if (
+            orderId
+          ) {
             router.replace(
               `/checkout/success?orderId=${encodeURIComponent(
                 orderId
               )}&orderNumber=${encodeURIComponent(
-                orderNumber || ""
+                orderNumber ||
+                  ""
               )}`
             );
           } else {
@@ -902,21 +1098,25 @@ export default function CheckoutPage() {
             );
           }
         } catch (
-          error
+          verificationError
         ) {
           console.error(
             "Payment verification error:",
-            error
+            verificationError
           );
 
-          setPaymentError(
-            error instanceof
+          setError(
+            verificationError instanceof
               Error
-              ? error.message
-              : "Payment verification failed. Please contact support before trying again."
+              ? verificationError.message
+              : "Payment verification failed."
           );
 
-          setIsVerifyingPayment(
+          setVerifying(
+            false
+          );
+
+          setPaymentLoading(
             false
           );
         }
@@ -934,22 +1134,19 @@ export default function CheckoutPage() {
   const handlePayment =
     useCallback(
       async () => {
-        setPageError(
-          null
-        );
-
-        setPaymentError(
-          null
-        );
-
         if (
-          isCreatingPayment ||
-          isVerifyingPayment
+          busy
         ) {
           return;
         }
 
-        if (!isSignedIn) {
+        setError(
+          null
+        );
+
+        if (
+          !isSignedIn
+        ) {
           router.push(
             "/sign-in?redirect_url=/checkout"
           );
@@ -961,7 +1158,7 @@ export default function CheckoutPage() {
           items.length ===
           0
         ) {
-          setPageError(
+          setError(
             "Your cart is empty."
           );
 
@@ -969,10 +1166,10 @@ export default function CheckoutPage() {
         }
 
         if (
-          !isCartPrintReady
+          !isPrintReady
         ) {
-          setPageError(
-            "Please add at least 1 print image for every physical product before payment."
+          setError(
+            "Complete the print images before payment."
           );
 
           return;
@@ -981,27 +1178,27 @@ export default function CheckoutPage() {
         if (
           !selectedAddressId
         ) {
-          setPageError(
+          setError(
             "Please select a delivery address."
           );
 
           return;
         }
 
-        setIsCreatingPayment(
+        setPaymentLoading(
           true
         );
 
         try {
-          const razorpayLoaded =
-            await loadRazorpayScript();
+          const loaded =
+            await loadRazorpay();
 
           if (
-            !razorpayLoaded ||
+            !loaded ||
             !window.Razorpay
           ) {
             throw new Error(
-              "Unable to load payment checkout. Please check your internet connection and try again."
+              "Unable to load the payment gateway."
             );
           }
 
@@ -1014,7 +1211,24 @@ export default function CheckoutPage() {
             );
           }
 
-          const response =
+          /*
+           * IMPORTANT:
+           *
+           * We send ONLY addressId.
+           *
+           * The backend calculates:
+           *
+           * subtotal
+           * shipping
+           * total
+           * stock
+           * product price
+           *
+           * The frontend never sends
+           * the payment amount.
+           */
+
+          const result =
             await fetch(
               `${API_URL}/api/orders/create-payment`,
               {
@@ -1038,14 +1252,14 @@ export default function CheckoutPage() {
             );
 
           const data =
-            await response
+            await result
               .json()
               .catch(
                 () => null
               );
 
           if (
-            !response.ok ||
+            !result.ok ||
             !data?.success
           ) {
             throw new Error(
@@ -1054,13 +1268,13 @@ export default function CheckoutPage() {
             );
           }
 
-          const razorpayData =
+          const payment =
             data.razorpay;
 
           if (
-            !razorpayData?.keyId ||
-            !razorpayData?.orderId ||
-            !razorpayData?.amount
+            !payment?.keyId ||
+            !payment?.orderId ||
+            !payment?.amount
           ) {
             throw new Error(
               "Invalid payment information received from server."
@@ -1070,13 +1284,13 @@ export default function CheckoutPage() {
           const options:
             RazorpayOptions = {
             key:
-              razorpayData.keyId,
+              payment.keyId,
 
             amount:
-              razorpayData.amount,
+              payment.amount,
 
             currency:
-              razorpayData.currency ||
+              payment.currency ||
               "INR",
 
             name:
@@ -1090,7 +1304,7 @@ export default function CheckoutPage() {
               }`,
 
             order_id:
-              razorpayData.orderId,
+              payment.orderId,
 
             prefill: {
               name:
@@ -1119,11 +1333,11 @@ export default function CheckoutPage() {
             modal: {
               ondismiss:
                 () => {
-                  setIsCreatingPayment(
+                  setPaymentLoading(
                     false
                   );
 
-                  setPaymentError(
+                  setError(
                     "Payment window was closed. Your order is still pending payment."
                   );
                 },
@@ -1131,51 +1345,50 @@ export default function CheckoutPage() {
 
             handler:
               async (
-                response
+                razorpayResponse
               ) => {
-                await verifyRazorpayPayment(
-                  response
+                await verifyPayment(
+                  razorpayResponse
                 );
               },
           };
 
-          const razorpay =
+          const instance =
             new window.Razorpay(
               options
             );
 
-          razorpay.open();
+          instance.open();
         } catch (
-          error
+          paymentError
         ) {
           console.error(
             "Create payment error:",
-            error
+            paymentError
           );
 
-          setPaymentError(
-            error instanceof
+          setError(
+            paymentError instanceof
               Error
-              ? error.message
+              ? paymentError.message
               : "Unable to start payment."
           );
 
-          setIsCreatingPayment(
+          setPaymentLoading(
             false
           );
         }
       },
       [
-        isCreatingPayment,
-        isVerifyingPayment,
+        busy,
         isSignedIn,
+        router,
         items.length,
-        isCartPrintReady,
+        isPrintReady,
         selectedAddressId,
         getToken,
         selectedAddress,
-        verifyRazorpayPayment,
-        router,
+        verifyPayment,
       ]
     );
 
@@ -1185,19 +1398,17 @@ export default function CheckoutPage() {
 
   if (
     !isLoaded ||
-    isInitializing ||
-    isLoadingAddresses
+    loading ||
+    addressLoading
   ) {
     return (
       <CheckoutSkeleton />
     );
   }
 
-  /* ==========================================================
-     AUTH WAIT
-  ========================================================== */
-
-  if (!isSignedIn) {
+  if (
+    !isSignedIn
+  ) {
     return null;
   }
 
@@ -1213,25 +1424,25 @@ export default function CheckoutPage() {
       <div className="min-h-[100svh] bg-[#F7F7F5]">
         <Navbar />
 
-        <main className="mx-auto flex min-h-[70vh] w-full max-w-xl flex-col items-center justify-center px-5 pt-[96px] text-center">
+        <main className="flex min-h-[70vh] flex-col items-center justify-center px-5 pt-24 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F5F2E8] text-[#B9954F]">
             <span className="text-2xl">
               🛒
             </span>
           </div>
 
-          <h1 className="mt-5 text-2xl font-extrabold tracking-[-0.03em] text-[#0A1B2E]">
+          <h1 className="mt-5 text-2xl font-extrabold text-[#0A1B2E]">
             Your cart is empty
           </h1>
 
-          <p className="mt-2 text-sm leading-6 text-[#64748B]">
+          <p className="mt-2 max-w-sm text-sm leading-6 text-[#64748B]">
             Add products to your cart
             before continuing to checkout.
           </p>
 
           <Link
             href="/products"
-            className="mt-7 inline-flex min-h-11 items-center justify-center rounded-[9px] bg-[#0A1B2E] px-7 text-sm font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46]"
+            className="mt-7 inline-flex min-h-11 items-center rounded-[9px] bg-[#0A1B2E] px-7 text-sm font-extrabold text-white hover:bg-[#142C46]"
           >
             Browse Products
           </Link>
@@ -1248,7 +1459,7 @@ export default function CheckoutPage() {
     <div className="min-h-[100svh] overflow-x-hidden bg-[#F7F7F5]">
       <Navbar />
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-[88px] sm:px-6 sm:pb-24 sm:pt-[104px] lg:px-8">
+      <main className="mx-auto w-full max-w-7xl px-4 pb-36 pt-[88px] sm:px-6 sm:pb-28 sm:pt-[104px] lg:px-8 lg:pb-24">
 
         {/* ====================================================
             HEADER
@@ -1257,7 +1468,7 @@ export default function CheckoutPage() {
         <header className="mb-6 sm:mb-8">
           <Link
             href="/cart"
-            className="mb-4 inline-flex min-h-9 items-center gap-2 text-xs font-bold text-[#64748B] transition-colors duration-150 hover:text-[#0A1B2E]"
+            className="mb-4 inline-flex min-h-9 items-center gap-2 text-xs font-bold text-[#64748B] hover:text-[#0A1B2E]"
           >
             <ArrowLeftIcon size={16} />
             Back to cart
@@ -1271,35 +1482,36 @@ export default function CheckoutPage() {
             </span>
           </div>
 
-          <h1 className="text-[29px] font-extrabold leading-none tracking-[-0.035em] text-[#0A1B2E] sm:text-4xl">
+          <h1 className="text-[30px] font-extrabold leading-none tracking-[-0.04em] text-[#0A1B2E] sm:text-4xl">
             Checkout
           </h1>
 
-          <p className="mt-2 max-w-xl text-[12px] leading-5 text-[#64748B] sm:text-sm">
-            Confirm your delivery address
-            and securely complete your order.
+          <p className="mt-2 text-[12px] leading-5 text-[#64748B] sm:text-sm">
+            Confirm your address and
+            securely complete your order.
           </p>
         </header>
 
         {/* ====================================================
-            GLOBAL ERROR
+            ERROR
         ==================================================== */}
 
-        {(pageError ||
-          paymentError) && (
-          <div className="mb-5 flex items-start gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3.5">
-            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-red-100 text-[10px] font-extrabold text-red-600">
-              !
+        {error && (
+          <div
+            role="alert"
+            className="mb-5 flex items-start gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3.5"
+          >
+            <div className="mt-0.5 text-red-600">
+              <AlertIcon />
             </div>
 
-            <div className="min-w-0">
+            <div>
               <p className="text-xs font-extrabold text-red-700">
                 Unable to continue
               </p>
 
-              <p className="mt-0.5 text-[11px] leading-5 text-red-600">
-                {pageError ||
-                  paymentError}
+              <p className="mt-1 text-[11px] leading-5 text-red-600">
+                {error}
               </p>
             </div>
           </div>
@@ -1309,7 +1521,7 @@ export default function CheckoutPage() {
             PRINT WARNING
         ==================================================== */}
 
-        {!isCartPrintReady && (
+        {!isPrintReady && (
           <div className="mb-5 rounded-[10px] border border-[#E6D6A9] bg-[#FBF7E9] px-4 py-3.5">
             <p className="text-xs font-extrabold text-[#8B6E32]">
               Print images are incomplete
@@ -1317,135 +1529,125 @@ export default function CheckoutPage() {
 
             <p className="mt-1 text-[11px] leading-5 text-[#8B6E32]">
               Every physical product needs
-              at least one print image before
-              you can continue.
+              1–6 print images before payment.
             </p>
 
             <Link
               href="/cart"
               className="mt-2 inline-block text-[11px] font-extrabold text-[#8B6E32] underline underline-offset-2"
             >
-              Go back to cart
+              Edit print images
             </Link>
           </div>
         )}
 
         {/* ====================================================
-            MAIN GRID
+            GRID
         ==================================================== */}
 
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12 lg:gap-8">
 
           {/* ==================================================
-              LEFT COLUMN
+              LEFT
           ================================================== */}
 
           <div className="min-w-0 space-y-5 lg:col-span-8">
 
             {/* =================================================
-                DELIVERY ADDRESS
+                ADDRESS
             ================================================= */}
 
             <section className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white">
 
-              <div className="flex items-start justify-between gap-4 border-b border-[#EEF0F2] px-4 py-4 sm:px-5 sm:py-5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#F5F2E8] text-[#B9954F]">
-                      <MapPinIcon />
-                    </span>
+              <div className="border-b border-[#EEF0F2] px-4 py-4 sm:px-5 sm:py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#F5F2E8] text-[#B9954F]">
+                        <MapPinIcon />
+                      </span>
 
-                    <div>
-                      <p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F]">
-                        Step 1
-                      </p>
+                      <div>
+                        <p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F]">
+                          Step 1
+                        </p>
 
-                      <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
-                        Delivery Address
-                      </h2>
+                        <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
+                          Delivery Address
+                        </h2>
+                      </div>
                     </div>
+
+                    <p className="mt-2 text-[11px] leading-5 text-[#64748B]">
+                      Select where you want
+                      your order delivered.
+                    </p>
                   </div>
 
-                  <p className="mt-2 text-[11px] leading-5 text-[#64748B] sm:text-xs">
-                    Select where you want your
-                    order delivered.
-                  </p>
-                </div>
+                  <Link
+                    href="/dashboard/addresses?return=/checkout"
+                    className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-[7px] border border-[#DDE2E7] bg-white px-3 text-[10px] font-extrabold text-[#0A1B2E] hover:border-[#B9954F] sm:text-xs"
+                  >
+                    <PlusIcon size={14} />
 
-                <Link
-                  href="/dashboard/addresses?return=/checkout"
-                  className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-[7px] border border-[#DDE2E7] bg-white px-3 text-[10px] font-extrabold text-[#0A1B2E] transition-colors duration-150 hover:border-[#B9954F] hover:bg-[#FBFAF6] sm:text-xs"
-                >
-                  <PlusIcon size={14} />
-                  <span className="hidden sm:inline">
-                    Add Address
-                  </span>
-                  <span className="sm:hidden">
-                    Add
-                  </span>
-                </Link>
+                    <span className="hidden sm:inline">
+                      Add Address
+                    </span>
+
+                    <span className="sm:hidden">
+                      Add
+                    </span>
+                  </Link>
+                </div>
               </div>
 
               <div className="p-4 sm:p-5">
                 {addresses.length ===
                 0 ? (
                   <div className="rounded-[10px] border border-dashed border-[#CBD5E1] bg-[#FAFAF8] px-4 py-8 text-center">
-                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-[#F5F2E8] text-[#B9954F]">
-                      <MapPinIcon />
-                    </div>
-
-                    <h3 className="mt-4 text-sm font-extrabold text-[#0A1B2E]">
+                    <p className="text-sm font-extrabold text-[#0A1B2E]">
                       No delivery address
-                    </h3>
+                    </p>
 
                     <p className="mx-auto mt-1 max-w-xs text-[11px] leading-5 text-[#64748B]">
-                      Add an address to continue
-                      with your order.
+                      Add an address to
+                      continue.
                     </p>
 
                     <Link
                       href="/dashboard/addresses?return=/checkout"
-                      className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-[8px] bg-[#0A1B2E] px-5 text-xs font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46]"
+                      className="mt-5 inline-flex min-h-10 items-center gap-2 rounded-[8px] bg-[#0A1B2E] px-5 text-xs font-extrabold text-white"
                     >
                       <PlusIcon size={15} />
-                      Add Delivery Address
+                      Add Address
                     </Link>
                   </div>
                 ) : (
-                  <>
-                    <div className="space-y-2.5">
-                      {addresses.map(
-                        (
-                          address
-                        ) => (
-                          <AddressCard
-                            key={
+                  <div className="space-y-2.5">
+                    {addresses.map(
+                      (
+                        address
+                      ) => (
+                        <AddressCard
+                          key={
+                            address._id
+                          }
+                          address={
+                            address
+                          }
+                          selected={
+                            selectedAddressId ===
+                            address._id
+                          }
+                          onSelect={() =>
+                            setSelectedAddressId(
                               address._id
-                            }
-                            address={
-                              address
-                            }
-                            selected={
-                              selectedAddressId ===
-                              address._id
-                            }
-                            onSelect={() =>
-                              setSelectedAddressId(
-                                address._id
-                              )
-                            }
-                          />
-                        )
-                      )}
-                    </div>
-
-                    <Link
-                      href="/dashboard/addresses?return=/checkout"
-                      className="mt-4 inline-block text-[11px] font-bold text-[#64748B] underline underline-offset-2 transition-colors duration-150 hover:text-[#0A1B2E]"
-                    >
-                      Manage all addresses
-                    </Link>
-                  </>
+                            )
+                          }
+                        />
+                      )
+                    )}
+                  </div>
                 )}
               </div>
             </section>
@@ -1456,43 +1658,47 @@ export default function CheckoutPage() {
 
             <section className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white">
 
-              <div className="flex items-center justify-between border-b border-[#EEF0F2] px-4 py-4 sm:px-5 sm:py-5">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#F5F2E8] text-[11px] font-extrabold text-[#B9954F]">
-                      2
-                    </span>
+              <div className="border-b border-[#EEF0F2] px-4 py-4 sm:px-5 sm:py-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#F5F2E8] text-[11px] font-extrabold text-[#B9954F]">
+                        2
+                      </span>
 
-                    <div>
-                      <p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F]">
-                        Review
-                      </p>
+                      <div>
+                        <p className="text-[9px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F]">
+                          Review
+                        </p>
 
-                      <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
-                        Your Products
-                      </h2>
+                        <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
+                          Your Products
+                        </h2>
+                      </div>
                     </div>
+
+                    <p className="mt-2 text-[11px] text-[#64748B]">
+                      {itemCount}{" "}
+                      {itemCount === 1
+                        ? "physical product"
+                        : "physical products"}
+                    </p>
                   </div>
 
-                  <p className="mt-2 text-[11px] text-[#64748B] sm:text-xs">
-                    {itemCount}{" "}
-                    {itemCount === 1
-                      ? "physical product"
-                      : "physical products"}
-                  </p>
+                  <Link
+                    href="/cart"
+                    className="text-[10px] font-extrabold text-[#64748B] underline underline-offset-2 hover:text-[#0A1B2E] sm:text-xs"
+                  >
+                    Edit cart
+                  </Link>
                 </div>
-
-                <Link
-                  href="/cart"
-                  className="text-[10px] font-extrabold text-[#64748B] underline underline-offset-2 transition-colors duration-150 hover:text-[#0A1B2E] sm:text-xs"
-                >
-                  Edit cart
-                </Link>
               </div>
 
-              <div className="divide-y divide-[#EEF0F2] px-4 sm:px-5">
+              <div className="divide-y divide-[#EEF0F2]">
                 {items.map(
-                  (item) => {
+                  (
+                    item
+                  ) => {
                     const readyUnits =
                       item.printUnits.filter(
                         (
@@ -1503,7 +1709,7 @@ export default function CheckoutPage() {
                           1
                       ).length;
 
-                    const isReady =
+                    const ready =
                       item.printUnits.length ===
                         item.quantity &&
                       item.printUnits.every(
@@ -1512,7 +1718,10 @@ export default function CheckoutPage() {
                         ) =>
                           unit.images
                             .length >=
-                          1
+                            1 &&
+                          unit.images
+                            .length <=
+                            MAX_PRINT_IMAGES
                       );
 
                     return (
@@ -1521,193 +1730,198 @@ export default function CheckoutPage() {
                           item._id ||
                           item.itemKey
                         }
-                        className="py-4 sm:py-5"
+                        className="px-4 py-4 sm:px-5 sm:py-5"
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <h3 className="line-clamp-2 text-[13px] font-extrabold leading-5 text-[#0A1B2E] sm:text-sm">
-                              {item.name}
-                            </h3>
+                        <div className="flex items-start gap-3.5">
 
-                            {Object.entries(
-                              item.selections ||
-                                {}
-                            ).length >
-                              0 && (
-                              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                          {/* PRODUCT IMAGE */}
+
+                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#FAFAF8] sm:h-20 sm:w-20">
+                            {item.image ? (
+                              <img
+                                src={
+                                  item.image
+                                }
+                                alt={
+                                  item.name
+                                }
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-[9px] font-bold text-[#94A3B8]">
+                                Product
+                              </div>
+                            )}
+                          </div>
+
+                          {/* INFO */}
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="min-w-0">
+                                <h3 className="line-clamp-2 text-[13px] font-extrabold leading-5 text-[#0A1B2E] sm:text-sm">
+                                  {
+                                    item.name
+                                  }
+                                </h3>
+
                                 {Object.entries(
                                   item.selections ||
                                     {}
-                                ).map(
-                                  ([
-                                    key,
-                                    value,
-                                  ]) => (
-                                    <p
-                                      key={
-                                        key
-                                      }
-                                      className="text-[10px] text-[#64748B]"
-                                    >
-                                      <span className="font-bold text-[#94A3B8]">
-                                        {
-                                          key
-                                        }
-                                        :
-                                      </span>{" "}
-                                      {
-                                        value
-                                      }
-                                    </p>
-                                  )
+                                ).length >
+                                  0 && (
+                                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                                    {Object.entries(
+                                      item.selections ||
+                                        {}
+                                    ).map(
+                                      ([
+                                        key,
+                                        value,
+                                      ]) => (
+                                        <span
+                                          key={
+                                            key
+                                          }
+                                          className="text-[10px] text-[#64748B]"
+                                        >
+                                          <b className="text-[#94A3B8]">
+                                            {
+                                              key
+                                            }
+                                            :
+                                          </b>{" "}
+                                          {
+                                            value
+                                          }
+                                        </span>
+                                      )
+                                    )}
+                                  </div>
                                 )}
-                              </div>
-                            )}
 
-                            <p className="mt-1.5 text-[10px] font-semibold text-[#64748B] sm:text-xs">
-                              Qty{" "}
-                              {item.quantity}
-                            </p>
-                          </div>
-
-                          <p className="shrink-0 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
-                            {formatPrice(
-                              Number(
-                                item.price
-                              ) *
-                                Number(
-                                  item.quantity
-                                )
-                            )}
-                          </p>
-                        </div>
-
-                        {/* PRINT STATUS */}
-
-                        <div
-                          className={`
-                            mt-3
-                            rounded-[8px]
-                            border
-                            px-3
-                            py-2.5
-                            ${
-                              isReady
-                                ? "border-green-200 bg-green-50"
-                                : "border-[#E6D6A9] bg-[#FBF7E9]"
-                            }
-                          `}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <span
-                                className={`
-                                  flex
-                                  h-6
-                                  w-6
-                                  shrink-0
-                                  items-center
-                                  justify-center
-                                  rounded-full
-                                  ${
-                                    isReady
-                                      ? "bg-green-100 text-green-700"
-                                      : "bg-[#F1E8CD] text-[#8B6E32]"
-                                  }
-                                `}
-                              >
-                                {isReady ? (
-                                  <CheckIcon size={13} />
-                                ) : (
-                                  <span className="text-[10px] font-extrabold">
-                                    !
-                                  </span>
-                                )}
-                              </span>
-
-                              <div className="min-w-0">
-                                <p
-                                  className={`
-                                    text-[10px]
-                                    font-extrabold
-                                    ${
-                                      isReady
-                                        ? "text-green-700"
-                                        : "text-[#8B6E32]"
-                                    }
-                                  `}
-                                >
-                                  Print Images
-                                </p>
-
-                                <p
-                                  className={`
-                                    mt-0.5
-                                    text-[9px]
-                                    ${
-                                      isReady
-                                        ? "text-green-600"
-                                        : "text-[#8B6E32]"
-                                    }
-                                  `}
-                                >
-                                  {readyUnits}/
+                                <p className="mt-1.5 text-[10px] font-semibold text-[#64748B]">
+                                  Qty{" "}
                                   {
                                     item.quantity
-                                  }{" "}
-                                  ready
+                                  }
                                 </p>
                               </div>
+
+                              <p className="shrink-0 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
+                                {formatPrice(
+                                  Number(
+                                    item.price
+                                  ) *
+                                    Number(
+                                      item.quantity
+                                    )
+                                )}
+                              </p>
                             </div>
 
-                            <Link
-                              href="/cart"
-                              className="shrink-0 text-[9px] font-extrabold underline underline-offset-2 sm:text-[10px]"
-                            >
-                              Edit
-                            </Link>
-                          </div>
+                            {/* PRINT STATUS */}
 
-                          <div className="mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-                            {item.printUnits.map(
-                              (
-                                unit,
-                                index
-                              ) => (
-                                <span
-                                  key={
-                                    unit.unitId
-                                  }
-                                  className={`
-                                    shrink-0
-                                    rounded-[5px]
-                                    px-2
-                                    py-1
-                                    text-[8px]
-                                    font-extrabold
-                                    ${
-                                      unit
-                                        .images
-                                        .length >=
-                                      1
-                                        ? "bg-white text-green-700"
-                                        : "bg-white text-[#8B6E32]"
-                                    }
-                                  `}
+                            <div
+                              className={`
+                                mt-3
+                                rounded-[9px]
+                                border
+                                p-3
+                                ${
+                                  ready
+                                    ? "border-green-200 bg-green-50"
+                                    : "border-[#E6D6A9] bg-[#FBF7E9]"
+                                }
+                              `}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <span
+                                    className={`
+                                      flex
+                                      h-6
+                                      w-6
+                                      shrink-0
+                                      items-center
+                                      justify-center
+                                      rounded-full
+                                      ${
+                                        ready
+                                          ? "bg-green-100 text-green-700"
+                                          : "bg-[#F1E8CD] text-[#8B6E32]"
+                                      }
+                                    `}
+                                  >
+                                    {ready ? (
+                                      <CheckIcon size={13} />
+                                    ) : (
+                                      "!"
+                                    )}
+                                  </span>
+
+                                  <div className="min-w-0">
+                                    <p
+                                      className={`
+                                        text-[10px]
+                                        font-extrabold
+                                        ${
+                                          ready
+                                            ? "text-green-700"
+                                            : "text-[#8B6E32]"
+                                        }
+                                      `}
+                                    >
+                                      Print Images
+                                    </p>
+
+                                    <p
+                                      className={`
+                                        mt-0.5
+                                        text-[9px]
+                                        ${
+                                          ready
+                                            ? "text-green-600"
+                                            : "text-[#8B6E32]"
+                                        }
+                                      `}
+                                    >
+                                      {
+                                        readyUnits
+                                      }
+                                      /
+                                      {
+                                        item.quantity
+                                      }{" "}
+                                      physical
+                                      product
+                                      {
+                                        readyUnits ===
+                                        1
+                                          ? ""
+                                          : "s"
+                                      }{" "}
+                                      ready
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <Link
+                                  href="/cart"
+                                  className="shrink-0 text-[9px] font-extrabold underline underline-offset-2 sm:text-[10px]"
                                 >
-                                  P
-                                  {index +
-                                    1}
-                                  {" "}
-                                  {
-                                    unit
-                                      .images
-                                      .length
-                                  }
-                                  /3
-                                </span>
-                              )
-                            )}
+                                  Edit
+                                </Link>
+                              </div>
+
+                              <PrintImages
+                                units={
+                                  item.printUnits
+                                }
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1723,7 +1937,7 @@ export default function CheckoutPage() {
 
             <section className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white">
 
-              <div className="border-b border-[#EEF0F2] px-4 py-4 sm:px-5 sm:py-5">
+              <div className="border-b border-[#EEF0F2] px-4 py-4 sm:px-5">
                 <div className="flex items-center gap-2">
                   <span className="flex h-7 w-7 items-center justify-center rounded-[7px] bg-[#F5F2E8] text-[11px] font-extrabold text-[#B9954F]">
                     3
@@ -1742,21 +1956,21 @@ export default function CheckoutPage() {
               </div>
 
               <div className="p-4 sm:p-5">
-                <div className="flex items-start gap-3 rounded-[9px] border border-[#E5E7EB] bg-[#FAFAF8] p-3.5 sm:p-4">
+                <div className="flex items-start gap-3 rounded-[9px] border border-[#E5E7EB] bg-[#FAFAF8] p-3.5">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-[#0A1B2E] text-white">
                     <CardIcon />
                   </div>
 
-                  <div className="min-w-0">
+                  <div>
                     <p className="text-xs font-extrabold text-[#0A1B2E] sm:text-sm">
                       Secure online payment
                     </p>
 
                     <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
-                      You will be securely
-                      redirected to the payment
-                      checkout after confirming
-                      your order.
+                      Your final amount is
+                      calculated by the server
+                      using the latest cart,
+                      product weight and stock.
                     </p>
                   </div>
                 </div>
@@ -1765,8 +1979,7 @@ export default function CheckoutPage() {
                   <ShieldIcon />
 
                   <span>
-                    Your payment is processed
-                    securely.
+                    Secure Razorpay checkout
                   </span>
                 </div>
               </div>
@@ -1785,7 +1998,7 @@ export default function CheckoutPage() {
                   Order
                 </p>
 
-                <h2 className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+                <h2 className="mt-1 text-lg font-extrabold text-[#0A1B2E]">
                   Summary
                 </h2>
               </div>
@@ -1800,7 +2013,7 @@ export default function CheckoutPage() {
                     border
                     p-3
                     ${
-                      isCartPrintReady
+                      isPrintReady
                         ? "border-green-200 bg-green-50"
                         : "border-[#E6D6A9] bg-[#FBF7E9]"
                     }
@@ -1818,18 +2031,16 @@ export default function CheckoutPage() {
                         justify-center
                         rounded-full
                         ${
-                          isCartPrintReady
+                          isPrintReady
                             ? "bg-green-100 text-green-700"
                             : "bg-[#F1E8CD] text-[#8B6E32]"
                         }
                       `}
                     >
-                      {isCartPrintReady ? (
+                      {isPrintReady ? (
                         <CheckIcon size={13} />
                       ) : (
-                        <span className="text-[10px] font-extrabold">
-                          !
-                        </span>
+                        "!"
                       )}
                     </span>
 
@@ -1839,32 +2050,21 @@ export default function CheckoutPage() {
                           text-xs
                           font-extrabold
                           ${
-                            isCartPrintReady
+                            isPrintReady
                               ? "text-green-700"
                               : "text-[#8B6E32]"
                           }
                         `}
                       >
-                        {isCartPrintReady
+                        {isPrintReady
                           ? "Order ready"
                           : "Print images required"}
                       </p>
 
-                      <p
-                        className={`
-                          mt-0.5
-                          text-[10px]
-                          leading-4
-                          ${
-                            isCartPrintReady
-                              ? "text-green-600"
-                              : "text-[#8B6E32]"
-                          }
-                        `}
-                      >
-                        {isCartPrintReady
-                          ? "Everything is ready for payment."
-                          : "Complete all print images in your cart."}
+                      <p className="mt-0.5 text-[10px] leading-4 text-[#64748B]">
+                        {isPrintReady
+                          ? "All physical products have their required print images."
+                          : "Complete the print images before payment."}
                       </p>
                     </div>
                   </div>
@@ -1873,7 +2073,7 @@ export default function CheckoutPage() {
                 {/* PRICE */}
 
                 <div className="mt-6 space-y-3.5">
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center justify-between gap-4 text-sm">
                     <span className="text-[#64748B]">
                       Products
                     </span>
@@ -1885,13 +2085,18 @@ export default function CheckoutPage() {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center justify-between gap-4 text-sm">
                     <span className="text-[#64748B]">
                       Delivery
                     </span>
 
                     <span className="font-bold text-[#0A1B2E]">
-                      FREE
+                      {shippingCharge >
+                      0
+                        ? formatPrice(
+                            shippingCharge
+                          )
+                        : "FREE"}
                     </span>
                   </div>
                 </div>
@@ -1903,9 +2108,9 @@ export default function CheckoutPage() {
                     Total
                   </span>
 
-                  <span className="text-[25px] font-extrabold tracking-[-0.03em] text-[#0A1B2E]">
+                  <span className="text-[27px] font-extrabold tracking-[-0.035em] text-[#0A1B2E]">
                     {formatPrice(
-                      totalAmount
+                      total
                     )}
                   </span>
                 </div>
@@ -1952,10 +2157,9 @@ export default function CheckoutPage() {
                     handlePayment
                   }
                   disabled={
-                    isCreatingPayment ||
-                    isVerifyingPayment ||
+                    busy ||
                     !selectedAddressId ||
-                    !isCartPrintReady ||
+                    !isPrintReady ||
                     addresses.length ===
                       0
                   }
@@ -1973,47 +2177,37 @@ export default function CheckoutPage() {
                     text-sm
                     font-extrabold
                     text-white
+                    outline-none
                     transition-colors
                     duration-150
                     hover:bg-[#142C46]
+                    focus-visible:ring-2
+                    focus-visible:ring-[#B9954F]
                     disabled:cursor-not-allowed
                     disabled:opacity-40
                   "
                 >
-                  {isCreatingPayment ? (
+                  {paymentLoading ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      <Spinner />
                       Starting payment...
                     </>
-                  ) : isVerifyingPayment ? (
+                  ) : verifying ? (
                     <>
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      Verifying...
+                      <Spinner />
+                      Verifying payment...
                     </>
                   ) : (
                     <>
                       Pay{" "}
                       {formatPrice(
-                        totalAmount
+                        total
                       )}
-                      <ArrowRightIcon size={17} />
+
+                      <ArrowRightIcon />
                     </>
                   )}
                 </button>
-
-                {!selectedAddressId && (
-                  <p className="mt-2.5 text-center text-[10px] font-semibold text-[#8B6E32]">
-                    Select a delivery address
-                    first.
-                  </p>
-                )}
-
-                {!isCartPrintReady && (
-                  <p className="mt-2.5 text-center text-[10px] font-semibold text-[#8B6E32]">
-                    Complete print images
-                    first.
-                  </p>
-                )}
 
                 <div className="mt-4 flex items-center justify-center gap-1.5 text-[9px] text-[#94A3B8]">
                   <ShieldIcon />
@@ -2040,79 +2234,105 @@ export default function CheckoutPage() {
           z-40
           border-t
           border-[#E5E7EB]
-          bg-white
+          bg-white/95
           px-3
-          pb-[calc(0.75rem+env(safe-area-inset-bottom))]
           pt-3
           shadow-[0_-8px_28px_rgba(10,27,46,0.08)]
+          backdrop-blur-md
           lg:hidden
         "
+        style={{
+          paddingBottom:
+            "calc(0.75rem + env(safe-area-inset-bottom))",
+        }}
       >
-        <div className="mx-auto flex w-full max-w-xl items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-[#94A3B8]">
-              Total
-            </p>
+        <div className="mx-auto w-full max-w-xl">
 
-            <p className="mt-0.5 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
-              {formatPrice(
-                totalAmount
-              )}
-            </p>
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-[#94A3B8]">
+              Delivery
+            </span>
+
+            <span className="text-[11px] font-bold text-[#64748B]">
+              {shippingCharge >
+              0
+                ? formatPrice(
+                    shippingCharge
+                  )
+                : "FREE"}
+            </span>
           </div>
 
-          <button
-            type="button"
-            onClick={
-              handlePayment
-            }
-            disabled={
-              isCreatingPayment ||
-              isVerifyingPayment ||
-              !selectedAddressId ||
-              !isCartPrintReady ||
-              addresses.length === 0
-            }
-            className="
-              flex
-              h-12
-              min-w-[150px]
-              shrink-0
-              items-center
-              justify-center
-              gap-2
-              rounded-[9px]
-              bg-[#0A1B2E]
-              px-4
-              text-xs
-              font-extrabold
-              text-white
-              transition-colors
-              duration-150
-              active:bg-[#081827]
-              disabled:cursor-not-allowed
-              disabled:opacity-40
-            "
-          >
-            {isCreatingPayment ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Processing
-              </>
-            ) : isVerifyingPayment ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                Verifying
-              </>
-            ) : (
-              <>
-                Pay Now
-                <ArrowRightIcon size={16} />
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-[#94A3B8]">
+                Total
+              </p>
+
+              <p className="mt-0.5 text-lg font-extrabold tracking-[-0.025em] text-[#0A1B2E]">
+                {formatPrice(
+                  total
+                )}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                handlePayment
+              }
+              disabled={
+                busy ||
+                !selectedAddressId ||
+                !isPrintReady ||
+                addresses.length ===
+                  0
+              }
+              className="
+                flex
+                h-12
+                min-w-[150px]
+                shrink-0
+                items-center
+                justify-center
+                gap-2
+                rounded-[9px]
+                bg-[#0A1B2E]
+                px-4
+                text-xs
+                font-extrabold
+                text-white
+                outline-none
+                transition-colors
+                duration-150
+                hover:bg-[#142C46]
+                focus-visible:ring-2
+                focus-visible:ring-[#B9954F]
+                disabled:cursor-not-allowed
+                disabled:opacity-40
+              "
+            >
+              {paymentLoading ? (
+                <>
+                  <Spinner />
+                  Processing
+                </>
+              ) : verifying ? (
+                <>
+                  <Spinner />
+                  Verifying
+                </>
+              ) : (
+                <>
+                  Pay Now
+                  <ArrowRightIcon size={16} />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
+
     </div>
   );
 }
