@@ -10,49 +10,45 @@ export default function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   return (
-    <main className="min-h-[100dvh] w-full overflow-x-hidden bg-[#F7F7F5] text-[#0A1B2E]">
-      <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-[88px] sm:px-6 sm:pt-[96px] lg:px-8 lg:pb-14">
+    <div className="min-h-[100dvh] w-full overflow-x-hidden scroll-smooth bg-[#F7F7F5] text-[#0A1B2E]">
+      <div className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:py-8">
         {/* Header */}
+        <header className="mb-5 sm:mb-7">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="truncate text-2xl font-extrabold tracking-tight text-[#0A1B2E] sm:text-3xl">
+                My Account
+              </h1>
+              <p className="mt-1 text-xs text-[#64748B] sm:text-sm">
+                Manage your orders and account.
+              </p>
+            </div>
 
-        <div className="mb-5 flex items-center justify-between gap-4 sm:mb-6">
-          <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#B9954F]">
-              Account
-            </p>
-
-            <h1 className="mt-1 truncate text-2xl font-extrabold tracking-[-0.025em] text-[#0A1B2E] sm:text-3xl">
-              My Dashboard
-            </h1>
-          </div>
-
-          <Link
-            href="/"
-            className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-3.5 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-150 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:px-4"
-          >
-            <span className="hidden sm:inline">
-              ← Back to Home
-            </span>
-
-            <span className="sm:hidden">
+            <Link
+              href="/"
+              className="inline-flex min-h-[42px] shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-3.5 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F] hover:text-[#B9954F] active:scale-[0.97] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:min-h-[44px] sm:px-4"
+            >
+              <span className="hidden sm:inline">←&nbsp; </span>
               Home
-            </span>
-          </Link>
-        </div>
+            </Link>
+          </div>
+        </header>
 
         {/* Dashboard */}
-
-        <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-8">
-          <aside className="min-w-0 lg:sticky lg:top-[96px] lg:self-start">
-            <div className="rounded-[14px] border border-[#E5E7EB] bg-white p-2 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] lg:p-2.5">
+        <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-7">
+          {/* Navigation */}
+          <aside className="min-w-0 lg:sticky lg:top-5 lg:h-fit">
+            <div className="w-full overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white p-2 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-2.5 lg:p-3">
               <AccountSidebar />
             </div>
           </aside>
 
-          <section className="min-w-0 overflow-visible">
+          {/* Page content */}
+          <main className="min-w-0 w-full pb-8 sm:pb-10">
             {children}
-          </section>
+          </main>
         </div>
       </div>
-    </main>
+    </div>
   );
 }

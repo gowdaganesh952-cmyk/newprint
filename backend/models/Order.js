@@ -1,538 +1,299 @@
 import mongoose from "mongoose";
 
 /* ============================================================
-   CONSTANTS
+   PRINT IMAGE SCHEMA
 ============================================================ */
-
-const MAX_PRINT_IMAGES = 6;
+const printImageSchema = new mongoose.Schema(
+  {
+    url: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    publicId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+  },
+  { _id: false }
+);
 
 /* ============================================================
-   PRINT IMAGE
+   PRINT UNIT SCHEMA
 ============================================================ */
-
-const printImageSchema =
-    new mongoose.Schema(
-        {
-            /* ==================================================
-               CLOUDINARY URL
-            ================================================== */
-
-            url: {
-                type: String,
-
-                required: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               CLOUDINARY PUBLIC ID
-            ================================================== */
-
-            publicId: {
-                type: String,
-
-                required: true,
-
-                trim: true,
-            },
-        },
-
-        {
-            /*
-             * Do not create an _id
-             * for every print image.
-             */
-            _id: false,
-        }
-    );
-
-/* ============================================================
-   PRINT UNIT
-============================================================ */
-
-/*
- * ONE printUnit = ONE physical product.
- *
- * Example:
- *
- * quantity = 2
- *
- * printUnits = [
- *
- *     {
- *         unitId: "unit_1",
- *
- *         images: [
- *             image1,
- *             image2
- *         ]
- *     },
- *
- *     {
- *         unitId: "unit_2",
- *
- *         images: [
- *             image1
- *         ]
- *     }
- *
- * ]
- *
- * Each physical product:
- *
- * minimum 1 image
- * maximum 6 images
- */
-
-const printUnitSchema =
-    new mongoose.Schema(
-        {
-            /* ==================================================
-               UNIT ID
-            ================================================== */
-
-            unitId: {
-                type: String,
-
-                required: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               PRINT IMAGES
-            ================================================== */
-
-            images: {
-                type: [
-                    printImageSchema,
-                ],
-
-                default: [],
-
-                validate: {
-                    validator(
-                        images
-                    ) {
-                        return (
-                            Array.isArray(
-                                images
-                            ) &&
-                            images.length >=
-                                1 &&
-                            images.length <=
-                                MAX_PRINT_IMAGES
-                        );
-                    },
-
-                    message:
-                        `Each physical product must have 1 to ${MAX_PRINT_IMAGES} print images.`,
-                },
-            },
-        },
-
-        {
-            /*
-             * unitId is our own
-             * stable identifier.
-             */
-            _id: false,
-        }
-    );
+const printUnitSchema = new mongoose.Schema(
+  {
+    unitId: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    images: {
+      type: [printImageSchema],
+      default: [],
+    },
+  },
+  { _id: false }
+);
 
 /* ============================================================
    ORDER ITEM
 ============================================================ */
-
-const orderItemSchema =
-    new mongoose.Schema(
-        {
-            /* ==================================================
-               PRODUCT
-            ================================================== */
-
-            productId: {
-                type:
-                    mongoose.Schema.Types.ObjectId,
-
-                ref: "Product",
-
-                required: true,
-            },
-
-            /* ==================================================
-               ITEM KEY
-            ================================================== */
-
-            itemKey: {
-                type: String,
-
-                required: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               PRODUCT SNAPSHOT
-            ================================================== */
-
-            name: {
-                type: String,
-
-                required: true,
-
-                trim: true,
-            },
-
-            image: {
-                type: String,
-
-                default: "",
-            },
-
-            /* ==================================================
-               PRICE SNAPSHOT
-            ================================================== */
-
-            price: {
-                type: Number,
-
-                required: true,
-
-                min: 0,
-            },
-
-            /* ==================================================
-               QUANTITY
-            ================================================== */
-
-            quantity: {
-                type: Number,
-
-                required: true,
-
-                min: 1,
-
-                validate: {
-                    validator:
-                        Number.isInteger,
-
-                    message:
-                        "Quantity must be an integer.",
-                },
-            },
-
-            /* ==================================================
-               PRODUCT SELECTIONS
-            ================================================== */
-
-            selections: {
-                type:
-                    mongoose.Schema.Types.Mixed,
-
-                default: {},
-            },
-
-            /* ==================================================
-               PRINT UNITS
-            ================================================== */
-
-            printUnits: {
-                type: [
-                    printUnitSchema,
-                ],
-
-                required: true,
-
-                validate: {
-                    validator(
-                        units
-                    ) {
-                        return (
-                            Array.isArray(
-                                units
-                            ) &&
-                            units.length >=
-                                1
-                        );
-                    },
-
-                    message:
-                        "Order item must contain print units.",
-                },
-            },
-        },
-
-        {
-            /*
-             * Order item needs its own
-             * MongoDB _id.
-             */
-            _id: true,
-        }
-    );
-
-/* ============================================================
-   ORDER SCHEMA
-============================================================ */
-
-const orderSchema =
-    new mongoose.Schema(
-        {
-            /* ==================================================
-               USER
-            ================================================== */
-
-            userId: {
-                type: String,
-
-                required: true,
-
-                index: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               ORDER NUMBER
-            ================================================== */
-
-            orderNumber: {
-                type: String,
-
-                required: true,
-
-                unique: true,
-
-                index: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               ORDER ITEMS
-            ================================================== */
-
-            items: {
-                type: [
-                    orderItemSchema,
-                ],
-
-                required: true,
-
-                validate: {
-                    validator(
-                        items
-                    ) {
-                        return (
-                            Array.isArray(
-                                items
-                            ) &&
-                            items.length > 0
-                        );
-                    },
-
-                    message:
-                        "An order must contain at least one item.",
-                },
-            },
-
-            /* ==================================================
-               SUBTOTAL
-            ================================================== */
-
-            subtotal: {
-                type: Number,
-
-                required: true,
-
-                min: 0,
-            },
-
-            /* ==================================================
-               DELIVERY FEE
-            ================================================== */
-
-            deliveryFee: {
-                type: Number,
-
-                required: true,
-
-                min: 0,
-
-                default: 0,
-            },
-
-            /* ==================================================
-               TOTAL AMOUNT
-            ================================================== */
-
-            totalAmount: {
-                type: Number,
-
-                required: true,
-
-                min: 0,
-            },
-
-            /* ==================================================
-               CURRENCY
-            ================================================== */
-
-            currency: {
-                type: String,
-
-                required: true,
-
-                uppercase: true,
-
-                trim: true,
-
-                default: "INR",
-            },
-
-            /* ==================================================
-               ORDER STATUS
-            ================================================== */
-
-            status: {
-                type: String,
-
-                enum: [
-                    "Pending Payment",
-                    "Processing",
-                    "Shipped",
-                    "Delivered",
-                    "Cancelled",
-                ],
-
-                default:
-                    "Pending Payment",
-
-                index: true,
-            },
-
-            /* ==================================================
-               PAYMENT STATUS
-            ================================================== */
-
-            paymentStatus: {
-                type: String,
-
-                enum: [
-                    "Pending",
-                    "Paid",
-                    "Failed",
-                    "Refunded",
-                ],
-
-                default:
-                    "Pending",
-
-                index: true,
-            },
-
-            /* ==================================================
-               RAZORPAY ORDER ID
-            ================================================== */
-
-            razorpayOrderId: {
-                type: String,
-
-                default: null,
-
-                sparse: true,
-
-                index: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               RAZORPAY PAYMENT ID
-            ================================================== */
-
-            razorpayPaymentId: {
-                type: String,
-
-                default: null,
-
-                sparse: true,
-
-                index: true,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               RAZORPAY SIGNATURE
-            ================================================== */
-
-            razorpaySignature: {
-                type: String,
-
-                default: null,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               PAYMENT METHOD
-            ================================================== */
-
-            paymentMethod: {
-                type: String,
-
-                default: null,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               PAYMENT VERIFIED TIME
-            ================================================== */
-
-            paymentVerifiedAt: {
-                type: Date,
-
-                default: null,
-            },
-
-            /* ==================================================
-               RAZORPAY RECEIPT
-            ================================================== */
-
-            razorpayReceipt: {
-                type: String,
-
-                default: null,
-
-                trim: true,
-            },
-
-            /* ==================================================
-               SHIPPING ADDRESS SNAPSHOT
-            ================================================== */
-
-            shippingAddress: {
-                type:
-                    mongoose.Schema.Types.Mixed,
-
-                required: true,
-            },
-        },
-
-        {
-            timestamps: true,
-        }
-    );
-
-/* ============================================================
-   EXPORT
-============================================================ */
-
-export default mongoose.model(
-    "Order",
-    orderSchema
+const orderItemSchema = new mongoose.Schema(
+  {
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+    itemKey: {
+      type: String,
+      trim: true,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    image: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+    price: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    selections: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    printUnits: {
+      type: [printUnitSchema],
+      default: [],
+    },
+  },
+  {
+    _id: false,
+  }
 );
+
+/* ============================================================
+   SHIPPING ADDRESS
+============================================================ */
+const addressSchema = new mongoose.Schema(
+  {
+    addressId: {
+      type: String,
+      trim: true,
+    },
+    fullName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    addressLine1: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    addressLine2: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    city: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    state: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    pincode: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    landmark: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+/* ============================================================
+   ORDER
+============================================================ */
+const orderSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: String,
+      required: true,
+      index: true,
+      trim: true,
+    },
+    orderNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+      trim: true,
+    },
+    items: {
+      type: [orderItemSchema],
+      required: true,
+      validate: {
+        validator: function (items) {
+          return Array.isArray(items) && items.length > 0;
+        },
+        message: "Order must contain at least one item.",
+      },
+    },
+    shippingAddress: {
+      type: addressSchema,
+      required: true,
+    },
+    currency: {
+      type: String,
+      default: "INR",
+      trim: true,
+    },
+    subtotal: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    deliveryFee: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
+    totalAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    status: {
+      type: String,
+      enum: [
+        "Not Completed",
+        "Confirmed",
+        "Shipped",
+        "Delivered",
+        "Cancelled",
+      ],
+      default: "Not Completed",
+      index: true,
+      trim: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: [
+        "Pending",
+        "Paid",
+        "Failed",
+        "Cancelled",
+        "Refunded",
+      ],
+      default: "Pending",
+      index: true,
+      trim: true,
+    },
+    paymentMethod: {
+      type: String,
+      default: "Razorpay",
+      trim: true,
+    },
+    razorpayOrderId: {
+      type: String,
+      default: null,
+      index: true,
+      trim: true,
+    },
+    razorpayPaymentId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    razorpaySignature: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    razorpayReceipt: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    paymentVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+    shippingProvider: {
+      type: String,
+      default: "India Post",
+      trim: true,
+    },
+    consignmentNumber: {
+      type: String,
+      default: null,
+      trim: true,
+      index: true,
+    },
+    trackingUrl: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    shippedAt: {
+      type: Date,
+      default: null,
+    },
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
+    shippingNotes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+/* ============================================================
+   MODEL
+============================================================ */
+const Order =
+  mongoose.models.Order ||
+  mongoose.model("Order", orderSchema);
+
+export default Order;

@@ -387,20 +387,37 @@ function ErrorScreen({
         </p>
 
         <div className="mt-7 flex w-full flex-col gap-2.5 sm:w-auto sm:flex-row">
+        // Inside ErrorScreen...
           <Link
             href="/"
-            className="inline-flex min-h-11 items-center justify-center rounded-[9px] border border-[#DDE2E7] bg-white px-6 text-xs font-extrabold text-[#0A1B2E] transition-[border-color,background-color,transform] duration-200 hover:border-[#B9954F] hover:bg-[#FBFAF6] active:scale-[0.99]"
+            className="inline-flex min-h-11 items-center justify-center rounded-[9px] border border-[#DDE2E7] bg-white px-6 text-xs font-extrabold text-[#0A1B2E] transition-[border-color,background-color,transform] duration-200 hover:border-[#B9954F] hover:bg-[#FBFAF6] active:scale-[0.99] touch-manipulation will-change-transform"
           >
             Go Home
           </Link>
 
           <Link
             href="/dashboard/orders"
-            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-6 text-xs font-extrabold text-white transition-[background-color,transform] duration-200 hover:bg-[#142C46] active:scale-[0.99]"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-6 text-xs font-extrabold text-white transition-[background-color,transform] duration-200 hover:bg-[#142C46] active:scale-[0.99] touch-manipulation will-change-transform"
           >
             My Orders
             <ArrowRightIcon size={15} />
           </Link>
+
+                <Link
+                  href="/dashboard/orders"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-5 text-xs font-extrabold text-white transition-[background-color,transform] duration-200 hover:bg-[#142C46] active:scale-[0.99] touch-manipulation will-change-transform"
+                >
+                  View My Orders
+                  <ArrowRightIcon size={15} />
+                </Link>
+
+                <Link
+                  href="/products"
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[9px] border border-[#DDE2E7] bg-white px-5 text-xs font-extrabold text-[#0A1B2E] transition-[border-color,background-color,transform] duration-200 hover:border-[#B9954F] hover:bg-[#FBFAF6] active:scale-[0.99] touch-manipulation will-change-transform"
+                >
+                  <ArrowLeftIcon size={15} />
+                  Continue Shopping
+                </Link>
         </div>
       </main>
     </div>

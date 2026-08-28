@@ -20,7 +20,7 @@ export default function AdminLayoutShell({
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#F7F7F5]">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-[#F7F7F5] text-[#0A1B2E] scroll-smooth">
       <AdminSidebar
         isOpen={isSidebarOpen}
         onClose={closeSidebar}
@@ -30,8 +30,8 @@ export default function AdminLayoutShell({
         onMenuClick={openSidebar}
       />
 
-      <div className="flex flex-1 flex-col md:pl-64">
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+      <div className="flex min-w-0 flex-1 flex-col md:pl-64">
+        <main className="min-w-0 flex-1 p-4 pb-12 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-7xl">
             {children}
           </div>

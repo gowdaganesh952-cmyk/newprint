@@ -2,6 +2,7 @@ import express from "express";
 
 import {
   authenticateUser,
+  requireAdmin,
 } from "../middleware/authMiddleware.js";
 
 import {
@@ -10,6 +11,10 @@ import {
   getOrderById,
   createPaymentOrder,
   verifyPayment,
+  getAdminOrders,
+  getAdminOrderStats,
+  getAdminOrderById,
+  updateOrderStatusAdmin
 } from "../controllers/orderController.js";
 
 const router = express.Router();
@@ -25,7 +30,18 @@ const router = express.Router();
 router.use(authenticateUser);
 
 /* ============================================================
-   ORDER STATS
+   ADMIN ROUTES
+============================================================ */
+
+// Must be placed before /:id routes to avoid parameter mismatch
+router.get("/admin/stats", requireAdmin, getAdminOrderStats);
+router.get("/admin", requireAdmin, getAdminOrders);
+router.get("/admin/:id", requireAdmin, getAdminOrderById);
+router.patch("/admin/:id/status", requireAdmin, updateOrderStatusAdmin);
+
+
+/* ============================================================
+   CUSTOMER: ORDER STATS
 ============================================================ */
 
 /*
@@ -46,14 +62,7 @@ router.get(
 /*
  * POST /api/orders/create-payment
  *
- * Body:
- *
- * {
- *   addressId: "..."
- * }
- *
  * Backend calculates:
- *
  * - cart items
  * - quantities
  * - print units
@@ -76,21 +85,8 @@ router.post(
 /*
  * POST /api/orders/verify-payment
  *
- * Body:
- *
- * {
- *   razorpay_payment_id,
- *   razorpay_order_id,
- *   razorpay_signature
- * }
- *
- * Backend:
- *
- * 1. Finds the user's order
- * 2. Verifies Razorpay signature
- * 3. Marks payment as Paid
- * 4. Changes order status to Processing
- * 5. Clears the cart
+ * Successful payment = Confirmed
+ * Failure/Cancellation updates paymentStatus, retains Not Completed.
  */
 router.post(
   "/verify-payment",
@@ -103,10 +99,7 @@ router.post(
 
 /*
  * GET /api/orders
- *
- * Optional:
- *
- * GET /api/orders?limit=10
+ * Returns the authenticated user's orders only.
  */
 router.get(
   "/",
@@ -121,16 +114,7 @@ router.get(
  * GET /api/orders/:id
  *
  * IMPORTANT:
- *
- * getOrderById must always query using:
- *
- * {
- *   _id: req.params.id,
- *   userId: req.auth.userId
- * }
- *
- * This prevents one user from reading
- * another user's order.
+ * getOrderById always queries using userId validation.
  */
 router.get(
   "/:id",

@@ -308,8 +308,8 @@ export const getOrderStats =
 
                         status: {
                             $in: [
-                                "Pending Payment",
-                                "Processing",
+                                "Not Completed",
+                                "Confirmed",
                                 "Shipped",
                             ],
                         },
@@ -523,21 +523,11 @@ export const getOrderById =
  * Frontend sends ONLY:
  *
  * {
- *     addressId: "..."
+ *     addressId: "...",
+ *     orderId: "..." // Optional (used for retry)
  * }
  *
- * Backend calculates:
- *
- * - cart
- * - current product prices
- * - variants
- * - stock
- * - print images
- * - product weights
- * - shipping
- * - subtotal
- * - total
- *
+ * Backend calculates prices. 
  * Frontend amount is NEVER trusted.
  */
 
@@ -575,13 +565,79 @@ export const createPaymentOrder =
                     });
             }
 
+            const {
+                addressId,
+                orderId,
+            } = req.body;
+
+            /* ==================================================
+               HANDLE PAYMENT RETRY
+            ================================================== */
+            if (orderId) {
+                const existingOrder = await Order.findOne({ _id: orderId, userId });
+                
+                if (!existingOrder) {
+                    return res.status(404).json({ success: false, message: "Order not found." });
+                }
+                
+                if (existingOrder.status !== "Not Completed") {
+                    return res.status(400).json({ success: false, message: "Cannot retry payment for this order." });
+                }
+
+                const razorpayAmount = Math.round(existingOrder.totalAmount * 100);
+                const receipt = existingOrder.orderNumber;
+                let razorpayOrder;
+
+                try {
+                    razorpayOrder = await razorpay.orders.create({
+                        amount: razorpayAmount,
+                        currency: "INR",
+                        receipt,
+                        notes: {
+                            orderNumber: existingOrder.orderNumber,
+                            userId,
+                            isRetry: "true",
+                        }
+                    });
+                } catch (razorpayError) {
+                    console.error("Razorpay Retry Order Creation Error:", razorpayError);
+                    existingOrder.paymentStatus = "Failed";
+                    await existingOrder.save();
+                    return res.status(502).json({
+                        success: false,
+                        message: "Unable to start payment retry. Please try again.",
+                    });
+                }
+
+                existingOrder.razorpayOrderId = razorpayOrder.id;
+                existingOrder.paymentStatus = "Pending";
+                await existingOrder.save();
+
+                return res.status(200).json({
+                    success: true,
+                    message: "Payment retry initiated successfully.",
+                    order: {
+                        id: existingOrder._id,
+                        orderNumber: existingOrder.orderNumber,
+                        subtotal: existingOrder.subtotal,
+                        deliveryFee: existingOrder.deliveryFee,
+                        totalAmount: existingOrder.totalAmount,
+                        currency: "INR",
+                        status: existingOrder.status,
+                        paymentStatus: existingOrder.paymentStatus,
+                    },
+                    razorpay: {
+                        keyId: process.env.RAZORPAY_KEY_ID,
+                        orderId: razorpayOrder.id,
+                        amount: razorpayOrder.amount,
+                        currency: razorpayOrder.currency,
+                    },
+                });
+            }
+
             /* ==================================================
                ADDRESS
             ================================================== */
-
-            const {
-                addressId,
-            } = req.body;
 
             if (
                 !addressId
@@ -1019,10 +1075,6 @@ export const createPaymentOrder =
                     name:
                         product.name,
 
-                    /*
-                     * Use current product image
-                     * when available.
-                     */
                     image:
                         product.images?.[0] ||
                         item.image ||
@@ -1185,8 +1237,8 @@ export const createPaymentOrder =
                     currency:
                         "INR",
 
-                    status:
-                        "Pending Payment",
+                   status:
+    "Not Completed",
 
                     paymentStatus:
                         "Pending",
@@ -1257,16 +1309,16 @@ export const createPaymentOrder =
                     razorpayError
                 );
 
-                await Order.findByIdAndUpdate(
-                    newOrder._id,
-                    {
-                        status:
-                            "Cancelled",
+               await Order.findByIdAndUpdate(
+    newOrder._id,
+    {
+        status:
+            "Not Completed",
 
-                        paymentStatus:
-                            "Failed",
-                    }
-                );
+        paymentStatus:
+            "Failed",
+    }
+);
 
                 return res
                     .status(502)
@@ -1585,7 +1637,45 @@ export const verifyPayment =
 
                 razorpay_signature:
                     razorpaySignature,
+                
+                payment_status, // Allow explicit client-side failure or cancellation
+
+                error_code
             } = req.body;
+
+            /* ==================================================
+               HANDLE PAYMENT FAILURE / CANCELLATION
+            ================================================== */
+            
+            if (payment_status === "Failed" || payment_status === "Cancelled" || error_code) {
+                if (!razorpayOrderId) {
+                    return res.status(400).json({ success: false, message: "Order ID required to mark failure." });
+                }
+
+                const order = await Order.findOne({ userId, razorpayOrderId });
+                
+                if (!order) {
+                    return res.status(404).json({ success: false, message: "Order associated with this payment was not found." });
+                }
+
+                if (order.status === "Not Completed") {
+                    order.paymentStatus = payment_status === "Cancelled" ? "Cancelled" : "Failed";
+                    await order.save();
+                    
+                    return res.status(200).json({
+                        success: true,
+                        message: `Payment marked as ${order.paymentStatus}.`,
+                        order: {
+                            id: order._id,
+                            orderNumber: order.orderNumber,
+                            status: order.status,
+                            paymentStatus: order.paymentStatus,
+                        }
+                    });
+                }
+                
+                return res.status(200).json({ success: true, message: "Order is already processed." });
+            }
 
             /* ==================================================
                VALIDATION
@@ -1740,6 +1830,11 @@ export const verifyPayment =
                         razorpayOrderId,
                     }
                 );
+                
+                if (order.status === "Not Completed") {
+                    order.paymentStatus = "Failed";
+                    await order.save();
+                }
 
                 return res
                     .status(400)
@@ -1781,17 +1876,11 @@ export const verifyPayment =
                 order.razorpaySignature =
                     razorpaySignature;
 
-                order.paymentStatus =
-                    "Paid";
+               order.paymentStatus =
+    "Paid";
 
-                /*
-                 * Keep this as Pending Payment
-                 * because your existing status enum
-                 * does not have a dedicated
-                 * "Manual Review" status.
-                 */
-                order.status =
-                    "Pending Payment";
+order.status =
+    "Confirmed";
 
                 order.paymentVerifiedAt =
                     new Date();
@@ -1836,14 +1925,14 @@ export const verifyPayment =
             order.razorpaySignature =
                 razorpaySignature;
 
-            order.paymentStatus =
-                "Paid";
+           order.paymentStatus =
+    "Paid";
 
-            order.status =
-                "Processing";
+order.status =
+    "Confirmed";
 
-            order.paymentVerifiedAt =
-                new Date();
+order.paymentVerifiedAt =
+    new Date();
 
             await order.save();
 
@@ -1907,3 +1996,235 @@ export const verifyPayment =
                 });
         }
     };
+
+/* ============================================================
+   ADMIN: GET ALL ORDERS
+============================================================ */
+export const getAdminOrders = async (req, res) => {
+    try {
+        const { limit, status, paymentStatus } = req.query;
+        const filter = {};
+        
+        if (status) filter.status = status;
+        if (paymentStatus) filter.paymentStatus = paymentStatus;
+
+        const ordersQuery = Order.find(filter).sort({ createdAt: -1 });
+
+        const parsedLimit = parseInt(limit, 10);
+        if (Number.isInteger(parsedLimit) && parsedLimit > 0) {
+            ordersQuery.limit(Math.min(parsedLimit, 100));
+        }
+
+        const orders = await ordersQuery;
+
+        return res.status(200).json({
+            success: true,
+            orders,
+        });
+    } catch (error) {
+        console.error("Get Admin Orders Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch admin orders",
+        });
+    }
+};
+
+/* ============================================================
+   ADMIN: GET ORDER STATS
+============================================================ */
+export const getAdminOrderStats = async (req, res) => {
+    try {
+        const totalOrders = await Order.countDocuments();
+        
+        const notCompleted = await Order.countDocuments({ status: "Not Completed" });
+        const confirmed = await Order.countDocuments({ status: "Confirmed" });
+        const shipped = await Order.countDocuments({ status: "Shipped" });
+        const delivered = await Order.countDocuments({ status: "Delivered" });
+        const cancelled = await Order.countDocuments({ status: "Cancelled" });
+
+        const paymentPending = await Order.countDocuments({ paymentStatus: "Pending" });
+        const paymentPaid = await Order.countDocuments({ paymentStatus: "Paid" });
+        const paymentFailed = await Order.countDocuments({ paymentStatus: "Failed" });
+        const paymentCancelled = await Order.countDocuments({ paymentStatus: "Cancelled" });
+        
+        const revenueResult = await Order.aggregate([
+            { $match: { paymentStatus: "Paid" } },
+            { $group: { _id: null, totalRevenue: { $sum: "$totalAmount" } } }
+        ]);
+        const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+        return res.status(200).json({
+            success: true,
+            stats: {
+                totalOrders,
+                orderStatus: {
+                    notCompleted,
+                    confirmed,
+                    shipped,
+                    delivered,
+                    cancelled
+                },
+                paymentStatus: {
+                    pending: paymentPending,
+                    paid: paymentPaid,
+                    failed: paymentFailed,
+                    cancelled: paymentCancelled
+                },
+                totalRevenue
+            },
+        });
+    } catch (error) {
+        console.error("Get Admin Order Stats Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch admin order stats",
+        });
+    }
+};
+
+/* ============================================================
+   ADMIN: GET ORDER BY ID
+============================================================ */
+export const getAdminOrderById = async (req, res) => {
+    try {
+        const orderId = req.params.id;
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order ID.",
+            });
+        }
+
+        const order = await Order.findById(orderId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found.",
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            order,
+        });
+    } catch (error) {
+        console.error("Get Admin Order By ID Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch admin order details.",
+        });
+    }
+};
+
+/* ============================================================
+   ADMIN: UPDATE ORDER STATUS (SHIPPING)
+============================================================ */
+export const updateOrderStatusAdmin = async (req, res) => {
+    try {
+        const orderId = req.params.id;
+        const { 
+            status, 
+            consignmentNumber, 
+            trackingUrl, 
+            shippingNotes 
+        } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(orderId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid order ID.",
+            });
+        }
+
+        const order = await Order.findById(orderId);
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: "Order not found.",
+            });
+        }
+
+        // ========================================================
+        // TRANSITION: CONFIRMED -> SHIPPED
+        // ========================================================
+        if (status === "Shipped") {
+            if (order.status !== "Confirmed") {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot mark as Shipped from current status: ${order.status}. Order must be Confirmed first.`,
+                });
+            }
+
+            if (!consignmentNumber || consignmentNumber.trim() === "") {
+                return res.status(400).json({
+                    success: false,
+                    message: "Consignment number is required to mark an order as shipped.",
+                });
+            }
+
+            order.status = "Shipped";
+            order.shippingProvider = "India Post";
+            order.consignmentNumber = consignmentNumber.trim();
+            order.shippedAt = new Date();
+            
+            if (trackingUrl && trackingUrl.trim() !== "") {
+                order.trackingUrl = trackingUrl.trim();
+            }
+            
+            if (shippingNotes && shippingNotes.trim() !== "") {
+                order.shippingNotes = shippingNotes.trim();
+            }
+
+            await order.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Order marked as Shipped successfully.",
+                order
+            });
+        }
+
+        // ========================================================
+        // TRANSITION: SHIPPED -> DELIVERED
+        // ========================================================
+        if (status === "Delivered") {
+            if (order.status !== "Shipped") {
+                return res.status(400).json({
+                    success: false,
+                    message: `Cannot mark as Delivered from current status: ${order.status}. Order must be Shipped first.`,
+                });
+            }
+
+            order.status = "Delivered";
+            order.deliveredAt = new Date();
+            
+            if (shippingNotes && shippingNotes.trim() !== "") {
+                order.shippingNotes = shippingNotes.trim();
+            }
+
+            await order.save();
+
+            return res.status(200).json({
+                success: true,
+                message: "Order marked as Delivered successfully.",
+                order
+            });
+        }
+
+        return res.status(400).json({
+            success: false,
+            message: "Invalid status update requested. Allowed transitions: Confirmed -> Shipped, Shipped -> Delivered.",
+        });
+
+    } catch (error) {
+        console.error("Update Order Status Admin Error:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Failed to update order status.",
+        });
+    }
+};
