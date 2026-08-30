@@ -96,12 +96,28 @@ function isPaymentCompleted(
   );
 }
 
+function formatCurrency(
+  amount: number,
+  currency = "INR"
+): string {
+  try {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `₹${amount}`;
+  }
+}
+
 export default async function OrderDetailsPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+
   const { getToken } = await auth();
   const token = await getToken();
 
@@ -115,8 +131,12 @@ export default async function OrderDetailsPage({
     isPaymentCompleted(order.paymentStatus);
 
   return (
-    <div className="min-w-0 space-y-5 overflow-x-hidden pb-8 sm:space-y-6 scroll-smooth">
-      {/* HEADER */}
+    <div className="min-w-0 space-y-5 overflow-x-hidden pb-8 scroll-smooth sm:space-y-6">
+
+      {/* ============================================================
+          HEADER
+      ============================================================ */}
+
       <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#B9954F]">
@@ -128,15 +148,51 @@ export default async function OrderDetailsPage({
           </h1>
         </div>
 
-        <Link
-          href="/dashboard/orders"
-          className="inline-flex min-h-[44px] w-fit shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
-        >
-          ← Orders
-        </Link>
+        {/* HEADER ACTIONS */}
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+
+          {/* TRACK ORDER */}
+          <Link
+            href={`/dashboard/orders/${id}/track`}
+            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
+          >
+            <svg
+              className="h-4 w-4 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M5 12h14"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M13 6l6 6-6 6"
+              />
+            </svg>
+
+            Track Order
+          </Link>
+
+          {/* BACK TO ORDERS */}
+          <Link
+            href="/dashboard/orders"
+            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
+          >
+            ← Orders
+          </Link>
+        </div>
       </header>
 
-      {/* PAYMENT / ORDER CONFIRMATION */}
+      {/* ============================================================
+          PAYMENT / ORDER CONFIRMATION
+      ============================================================ */}
+
       {paymentCompleted ? (
         <section className="overflow-hidden rounded-[14px] border border-green-200 bg-white shadow-[0_2px_16px_-8px_rgba(10,27,46,0.25)]">
           <div className="flex gap-4 p-5 sm:p-6">
@@ -147,6 +203,7 @@ export default async function OrderDetailsPage({
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2.5"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -160,6 +217,7 @@ export default async function OrderDetailsPage({
               <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
                 Order Confirmed
               </h2>
+
               <p className="mt-1 text-sm leading-6 text-[#64748B]">
                 Your payment has been completed successfully.
                 Your order has been confirmed.
@@ -178,6 +236,7 @@ export default async function OrderDetailsPage({
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
+                  aria-hidden="true"
                 >
                   <path
                     strokeLinecap="round"
@@ -191,6 +250,7 @@ export default async function OrderDetailsPage({
                 <h2 className="text-base font-extrabold text-[#0A1B2E] sm:text-lg">
                   Order Not Completed
                 </h2>
+
                 <p className="mt-1 text-sm leading-6 text-[#64748B]">
                   Your payment has not been completed yet.
                   Please complete the payment to confirm this order.
@@ -202,6 +262,7 @@ export default async function OrderDetailsPage({
               <p className="text-xs font-medium uppercase tracking-[0.08em] text-[#64748B]">
                 Payment Status
               </p>
+
               <p className="mt-1 text-sm font-bold text-[#0A1B2E]">
                 {order.paymentStatus || "Payment Pending"}
               </p>
@@ -210,11 +271,18 @@ export default async function OrderDetailsPage({
         </section>
       )}
 
-      {/* MAIN CONTENT */}
+      {/* ============================================================
+          MAIN CONTENT
+      ============================================================ */}
+
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6">
-        
-        {/* PRODUCTS */}
+
+        {/* ==========================================================
+            PRODUCTS
+        ========================================================== */}
+
         <section className="min-w-0 overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)]">
+
           <div className="border-b border-[#E5E7EB] bg-[#F7F7F5] px-4 py-4 sm:px-5">
             <h3 className="font-bold text-[#0A1B2E]">
               Products
@@ -222,6 +290,7 @@ export default async function OrderDetailsPage({
           </div>
 
           <div className="divide-y divide-[#E5E7EB]">
+
             {order.items && order.items.length > 0 ? (
               order.items.map((item, index) => (
                 <div
@@ -232,13 +301,17 @@ export default async function OrderDetailsPage({
                   className="p-4 sm:p-5"
                 >
                   <div className="flex min-w-0 gap-3 sm:gap-4">
-                    {/* PRODUCT IMAGE (Optimized) */}
+
+                    {/* PRODUCT IMAGE */}
+
                     {item.image ? (
                       <img
                         src={item.image}
                         alt={item.name}
                         loading="lazy"
                         decoding="async"
+                        width={96}
+                        height={96}
                         className="h-20 w-20 shrink-0 rounded-[10px] border border-[#E5E7EB] object-cover sm:h-24 sm:w-24"
                       />
                     ) : (
@@ -250,13 +323,16 @@ export default async function OrderDetailsPage({
                     )}
 
                     {/* PRODUCT INFORMATION */}
+
                     <div className="min-w-0 flex-1">
+
                       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                         <h4 className="break-words text-sm font-bold leading-5 text-[#0A1B2E] sm:text-base">
                           {item.name}
                         </h4>
+
                         <p className="shrink-0 text-sm font-extrabold text-[#0A1B2E] sm:ml-4">
-                          ₹{item.price}
+                          {formatCurrency(item.price)}
                         </p>
                       </div>
 
@@ -282,6 +358,7 @@ export default async function OrderDetailsPage({
                             ))}
                           </div>
                         )}
+
                     </div>
                   </div>
                 </div>
@@ -291,52 +368,71 @@ export default async function OrderDetailsPage({
                 No product information available.
               </div>
             )}
+
           </div>
         </section>
 
-        {/* RIGHT SIDE */}
+        {/* ==========================================================
+            RIGHT SIDE
+        ========================================================== */}
+
         <div className="min-w-0 space-y-5">
+
           {/* SUMMARY */}
+
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
+
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Summary
             </h3>
 
             <div className="space-y-3 text-sm">
+
               <div className="flex items-center justify-between gap-4 text-[#64748B]">
                 <span>Subtotal</span>
+
                 <span className="font-medium text-[#0A1B2E]">
-                  ₹{order.subtotal}
+                  {formatCurrency(order.subtotal)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-4 text-[#64748B]">
                 <span>Delivery</span>
+
                 <span className="font-medium text-[#0A1B2E]">
-                  ₹{order.deliveryFee}
+                  {formatCurrency(order.deliveryFee)}
                 </span>
               </div>
 
               <div className="flex items-center justify-between gap-4 border-t border-[#E5E7EB] pt-3">
+
                 <span className="font-bold text-[#0A1B2E]">
                   Total
                 </span>
+
                 <span className="text-lg font-extrabold text-[#0A1B2E]">
-                  ₹{order.totalAmount}
+                  {formatCurrency(order.totalAmount)}
                 </span>
+
               </div>
             </div>
           </section>
 
           {/* ORDER STATUS */}
+
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
+
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Order Status
             </h3>
 
             <div className="space-y-4 text-sm">
+
               <div>
-                <p className="text-[#64748B]">Order Date</p>
+                <p className="text-[#64748B]">
+                  Order Date
+                </p>
+
                 <p className="mt-1 font-medium text-[#0A1B2E]">
                   {new Date(
                     order.createdAt
@@ -349,8 +445,12 @@ export default async function OrderDetailsPage({
               </div>
 
               <div>
-                <p className="text-[#64748B]">Payment</p>
+                <p className="text-[#64748B]">
+                  Payment
+                </p>
+
                 <div className="mt-1">
+
                   {paymentCompleted ? (
                     <span className="inline-flex rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
                       Paid
@@ -360,67 +460,149 @@ export default async function OrderDetailsPage({
                       Payment Pending
                     </span>
                   )}
+
                 </div>
               </div>
 
               <div>
-                <p className="text-[#64748B]">Order</p>
+                <p className="text-[#64748B]">
+                  Order
+                </p>
+
                 <p className="mt-1 font-bold text-[#0A1B2E]">
                   {paymentCompleted
                     ? "Order Confirmed"
                     : "Order Not Completed"}
                 </p>
               </div>
+
+              {/* CURRENT STATUS */}
+
+              <div>
+                <p className="text-[#64748B]">
+                  Status
+                </p>
+
+                <p className="mt-1 break-words font-bold text-[#0A1B2E]">
+                  {order.status || "Not Completed"}
+                </p>
+              </div>
+
             </div>
           </section>
 
           {/* SHIPPING ADDRESS */}
+
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
+
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Shipping Address
             </h3>
 
-            <div className="space-y-1 text-sm leading-6 text-[#0A1B2E]">
-              <p className="font-semibold">
-                {order.shippingAddress?.fullName}
-              </p>
-              <p>{order.shippingAddress?.phone}</p>
-              <p className="pt-1">
-                {order.shippingAddress?.addressLine1}
-              </p>
-              {order.shippingAddress?.addressLine2 && (
-                <p>{order.shippingAddress.addressLine2}</p>
+            <div className="space-y-1 break-words text-sm leading-6 text-[#0A1B2E]">
+
+              {order.shippingAddress?.fullName && (
+                <p className="font-semibold">
+                  {order.shippingAddress.fullName}
+                </p>
               )}
-              <p>
-                {order.shippingAddress?.city},{" "}
-                {order.shippingAddress?.state}{" "}
-                {order.shippingAddress?.pincode}
-              </p>
+
+              {order.shippingAddress?.phone && (
+                <p>
+                  {order.shippingAddress.phone}
+                </p>
+              )}
+
+              {order.shippingAddress?.addressLine1 && (
+                <p className="pt-1">
+                  {order.shippingAddress.addressLine1}
+                </p>
+              )}
+
+              {order.shippingAddress?.addressLine2 && (
+                <p>
+                  {order.shippingAddress.addressLine2}
+                </p>
+              )}
+
+              {(order.shippingAddress?.city ||
+                order.shippingAddress?.state ||
+                order.shippingAddress?.pincode) && (
+                <p>
+                  {[
+                    order.shippingAddress?.city,
+                    order.shippingAddress?.state,
+                    order.shippingAddress?.pincode,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")}
+                </p>
+              )}
+
               {order.shippingAddress?.landmark && (
                 <p className="pt-1 text-[#64748B]">
                   Landmark: {order.shippingAddress.landmark}
                 </p>
               )}
+
             </div>
           </section>
         </div>
       </div>
 
-      {/* BOTTOM ACTIONS */}
+      {/* ============================================================
+          BOTTOM ACTIONS
+      ============================================================ */}
+
       <div className="flex flex-col gap-3 pt-1 sm:flex-row">
+
+        {/* TRACK ORDER */}
+
+        <Link
+          href={`/dashboard/orders/${id}/track`}
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+        >
+          <svg
+            className="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M5 12h14"
+            />
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M13 6l6 6-6 6"
+            />
+          </svg>
+
+          Track Order
+        </Link>
+
+        {/* BACK TO ORDERS */}
+
         <Link
           href="/dashboard/orders"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
         >
           ← Back to Orders
         </Link>
 
+        {/* CONTINUE SHOPPING */}
+
         <Link
           href="/"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:ml-auto"
         >
           Continue Shopping
         </Link>
+
       </div>
     </div>
   );
