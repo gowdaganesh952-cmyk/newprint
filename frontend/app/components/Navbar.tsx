@@ -394,6 +394,7 @@ export default function Navbar() {
         transition-[box-shadow,border-color,background-color]
         duration-200
         ease-out
+        will-change-[box-shadow,border-color,background-color]
 
         ${
           isScrolled
@@ -808,6 +809,7 @@ export default function Navbar() {
           transition-[max-height,opacity]
           duration-200
           ease-out
+          will-change-[max-height,opacity]
           ${
             isOpen
               ? "max-h-[calc(100dvh-66px)] opacity-100"
@@ -1006,12 +1008,6 @@ export default function Navbar() {
           </div>
         </nav>
       </div>
-
-      {/* ======================================================
-          MOBILE MENU CSS
-      ====================================================== */}
-
-      
     </header>
   );
 }

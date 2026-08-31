@@ -24,25 +24,21 @@ interface HomePageReadyProps {
 
 /*
  * Small delay after everything reports ready.
- *
- * This gives React + the browser enough time to paint the
- * final product grid and settle the layout before we reveal it.
+ * Significantly reduced for a snappy perception.
  */
-const FINAL_PAINT_DELAY = 180;
+const FINAL_PAINT_DELAY = 50;
 
 /*
  * Loader fade duration.
- * Keep this matched with duration-500 below.
+ * Keep this matched with duration-300 below.
  */
-const LOADER_FADE_DURATION = 500;
+const LOADER_FADE_DURATION = 300;
 
 /*
  * Emergency fallback only.
- *
- * If an unexpected API/browser problem prevents the ready
- * event from firing, we must never trap the visitor forever.
+ * Reduced from 12s to 8s to prevent long hangs on bad networks.
  */
-const SAFETY_TIMEOUT = 12000;
+const SAFETY_TIMEOUT = 8000;
 
 // ============================================================
 // COMPONENT
@@ -64,7 +60,6 @@ export default function HomePageReady({
   const completePageLoading = useCallback(() => {
     /*
      * Prevent duplicate calls from:
-     *
      * - products-ready
      * - window.load
      * - safety timeout
@@ -325,7 +320,7 @@ export default function HomePageReady({
           w-full
           bg-white
           transition-opacity
-          duration-500
+          duration-300
           ease-out
           ${
             pageReady
@@ -356,7 +351,7 @@ export default function HomePageReady({
             overflow-hidden
             bg-white
             transition-opacity
-            duration-500
+            duration-300
             ease-out
             ${
               pageReady
