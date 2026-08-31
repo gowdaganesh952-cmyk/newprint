@@ -1,1039 +1,2517 @@
-"use client";
+  "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+  import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useState,
+  } from "react";
 
-import {
-  useCart,
-  type CartItem,
-  type PrintImage,
-  type PrintUnit,
-} from "@/app/components/cart/CartProvider";
+  import Image from "next/image";
+  import Link from "next/link";
+  import { useRouter } from "next/navigation";
+  import { useAuth } from "@clerk/nextjs";
 
-import Navbar from "@/app/components/Navbar";
+  import {
+    useCart,
+    type CartItem,
+    type PrintImage,
+    type PrintUnit,
+  } from "@/app/components/cart/CartProvider";
 
-/* ============================================================
-   CONFIGURATION
-============================================================ */
+  import Navbar from "@/app/components/Navbar";
 
-const MAX_PRINT_IMAGES = 6;
-const MAX_UPLOAD_SIZE = 10 * 1024 * 1024;
-const FALLBACK_IMAGE = "/images/product-placeholder.jpg";
+  /* ============================================================
+    CONFIGURATION
+  ============================================================ */
 
-/* ============================================================
-   ICONS
-============================================================ */
+  const MAX_PRINT_IMAGES = 6;
+  const MAX_UPLOAD_SIZE =
+    10 * 1024 * 1024;
 
-function CartIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="8" cy="21" r="1" />
-      <circle cx="19" cy="21" r="1" />
-      <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-    </svg>
-  );
-}
+  /* ============================================================
+    ICONS
+  ============================================================ */
 
-function TrashIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-    </svg>
-  );
-}
-
-function ArrowRightIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 12h14" />
-      <path d="m12 5 7 7-7 7" />
-    </svg>
-  );
-}
-
-function ArrowLeftIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M19 12H5" />
-      <path d="m12 19-7-7 7-7" />
-    </svg>
-  );
-}
-
-function UploadIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M12 16V4" />
-      <path d="m7 9 5-5 5 5" />
-      <path d="M5 20h14" />
-    </svg>
-  );
-}
-
-function CheckIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="m5 12 4 4L19 6" />
-    </svg>
-  );
-}
-
-function XIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg className={className} width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M18 6 6 18" />
-      <path d="m6 6 12 12" />
-    </svg>
-  );
-}
-
-function MinusIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
-      <path d="M12 5v14" />
-      <path d="M5 12h14" />
-    </svg>
-  );
-}
-
-/* ============================================================
-   HELPERS
-============================================================ */
-
-function formatPrice(value: number): string {
-  return `₹${Number(value || 0).toLocaleString("en-IN")}`;
-}
-
-function createUnitId(): string {
-  return `unit_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function getItemId(item: CartItem): string {
-  return item._id || item.itemKey;
-}
-
-/* ============================================================
-   PRODUCT IMAGE
-============================================================ */
-
-function ProductImage({ src, alt, priority = false }: { src?: string; alt: string; priority?: boolean }) {
-  const [imageSrc, setImageSrc] = useState(src || FALLBACK_IMAGE);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setImageSrc(src || FALLBACK_IMAGE);
-    setFailed(false);
-  }, [src]);
-
-  const handleError = () => {
-    if (imageSrc === FALLBACK_IMAGE) {
-      setFailed(true);
-      return;
-    }
-    setImageSrc(FALLBACK_IMAGE);
-    setFailed(true);
-  };
-
-  return (
-    <>
-      <Image
-        src={imageSrc}
-        alt={alt}
-        fill
-        priority={priority}
-        sizes="(max-width: 639px) 86px, 112px"
-        onError={handleError}
-        className="object-cover transform-gpu transition-transform duration-300 md:hover:scale-[1.035]"
-      />
-      {failed && imageSrc === FALLBACK_IMAGE && (
-        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#F5F4F0] text-[#B9954F]">
-          <CartIcon className="h-8 w-8 opacity-40" />
-        </div>
-      )}
-    </>
-  );
-}
-
-/* ============================================================
-   SKELETON
-============================================================ */
-
-function CartSkeleton() {
-  return (
-    <div className="min-h-[100svh] bg-[#F7F7F5]">
-      <Navbar />
-      <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-[92px] sm:px-6 sm:pt-[108px] lg:px-8 lg:pb-24">
-        <div className="mb-7">
-          <div className="h-8 w-36 animate-pulse rounded bg-[#E5E7EB]" />
-          <div className="mt-3 h-4 w-48 animate-pulse rounded bg-[#E5E7EB]" />
-        </div>
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-8">
-          <div className="space-y-4 lg:col-span-8">
-            {[1, 2].map((number) => (
-              <div key={number} className="rounded-[12px] border border-[#E5E7EB] bg-white p-4 sm:p-5">
-                <div className="flex gap-4">
-                  <div className="h-24 w-24 shrink-0 animate-pulse rounded-[9px] bg-[#E5E7EB] sm:h-28 sm:w-28" />
-                  <div className="min-w-0 flex-1">
-                    <div className="h-4 w-3/4 animate-pulse rounded bg-[#E5E7EB]" />
-                    <div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-[#E5E7EB]" />
-                    <div className="mt-5 h-9 w-32 animate-pulse rounded bg-[#E5E7EB]" />
-                  </div>
-                </div>
-                <div className="mt-5 h-24 animate-pulse rounded-[9px] bg-[#E5E7EB]" />
-              </div>
-            ))}
-          </div>
-          <div className="lg:col-span-4">
-            <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-5">
-              <div className="h-5 w-36 animate-pulse rounded bg-[#E5E7EB]" />
-              <div className="mt-7 space-y-4">
-                <div className="h-4 w-full animate-pulse rounded bg-[#E5E7EB]" />
-                <div className="h-4 w-full animate-pulse rounded bg-[#E5E7EB]" />
-                <div className="h-px w-full bg-[#E5E7EB]" />
-                <div className="h-7 w-32 animate-pulse rounded bg-[#E5E7EB]" />
-                <div className="h-12 w-full animate-pulse rounded bg-[#E5E7EB]" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/* ============================================================
-   PRINT UNIT CARD
-============================================================ */
-
-function PrintUnitCard({
-  unit,
-  index,
-  onUpload,
-  onRemove,
-  uploading,
-  disabled,
-}: {
-  unit: PrintUnit;
-  index: number;
-  onUpload: (file: File) => void;
-  onRemove: (imageIndex: number) => void;
-  uploading: boolean;
-  disabled: boolean;
-}) {
-  const inputId = `print-upload-${unit.unitId}`;
-
-  return (
-    <div className="rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF8] p-3 sm:p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-extrabold text-[#0A1B2E] sm:text-sm">
-            Product {index + 1}
-          </p>
-          <p className="mt-0.5 text-[10px] text-[#64748B] sm:text-xs">
-            1–6 images
-          </p>
-        </div>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-extrabold ${
-            unit.images.length > 0
-              ? "bg-green-50 text-green-700"
-              : "bg-[#EEEBDD] text-[#8B6E32]"
-          }`}
-        >
-          {unit.images.length}/{MAX_PRINT_IMAGES}
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {unit.images.map((image, imageIndex) => (
-          <div
-            key={`${image.publicId}-${imageIndex}`}
-            className="relative aspect-square overflow-hidden rounded-[8px] border border-[#DDE2E7] bg-white transform-gpu"
-          >
-            <Image
-              src={image.url}
-              alt={`Product ${index + 1} print image ${imageIndex + 1}`}
-              fill
-              sizes="120px"
-              className="object-cover"
-            />
-            <button
-              type="button"
-              onClick={() => onRemove(imageIndex)}
-              disabled={disabled}
-              aria-label="Remove image"
-              className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-[#0A1B2E]/90 text-white transform-gpu transition-colors duration-150 hover:bg-red-600 active:scale-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <XIcon />
-            </button>
-          </div>
-        ))}
-
-        {unit.images.length < MAX_PRINT_IMAGES && (
-          <label
-            htmlFor={inputId}
-            className={`flex aspect-square cursor-pointer flex-col items-center justify-center rounded-[8px] border border-dashed border-[#C9D0D8] bg-white text-[#64748B] transform-gpu transition-colors duration-150 hover:border-[#B9954F] hover:bg-[#FBFAF6] active:scale-[0.98] ${
-              disabled ? "pointer-events-none opacity-50" : ""
-            }`}
-          >
-            {uploading ? (
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#D8DDE3] border-t-[#B9954F]" />
-            ) : (
-              <>
-                <UploadIcon />
-                <span className="mt-1.5 text-[9px] font-bold">Add image</span>
-              </>
-            )}
-            <input
-              id={inputId}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              className="hidden"
-              disabled={disabled}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) onUpload(file);
-                event.target.value = "";
-              }}
-            />
-          </label>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   CART PAGE
-============================================================ */
-
-export default function CartPage() {
-  const router = useRouter();
-  const { isSignedIn } = useAuth();
-  const {
-    items,
-    subtotal,
-    shippingCharge,
-    total,
-    itemCount,
-    loading,
-    updating,
-    error,
-    updateQuantity,
-    removeItem,
-    uploadPrintImage,
-    savePrintCustomization,
-  } = useCart();
-
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [draftUnits, setDraftUnits] = useState<PrintUnit[]>([]);
-  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
-  const [savingCustomization, setSavingCustomization] = useState(false);
-  const [customizationError, setCustomizationError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
-  // Lock body scroll when modal is open
-  useEffect(() => {
-    if (!editingItemId) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [editingItemId]);
-
-  // Esc to close modal
-  useEffect(() => {
-    if (!editingItemId) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (!savingCustomization && !uploadingKey) {
-          closeCustomization();
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [editingItemId, savingCustomization, uploadingKey]);
-
-  const isCartPrintReady = useMemo(() => {
-    if (items.length === 0) return false;
-    return items.every((item) => {
-      const quantity = Math.max(1, Number(item.quantity) || 1);
-      if (item.printUnits.length !== quantity) return false;
-      return item.printUnits.every(
-        (unit) =>
-          unit.images.length >= 1 && unit.images.length <= MAX_PRINT_IMAGES
-      );
-    });
-  }, [items]);
-
-  const totalPhysicalProducts = useMemo(
-    () =>
-      items.reduce(
-        (totalCount, item) => totalCount + Math.max(0, Number(item.quantity) || 0),
-        0
-      ),
-    [items]
-  );
-
-  const startCustomization = useCallback((item: CartItem) => {
-    setActionError(null);
-    setCustomizationError(null);
-
-    const quantity = Math.max(1, Number(item.quantity) || 1);
-    const existingUnits = Array.isArray(item.printUnits) ? item.printUnits : [];
-
-    const units: PrintUnit[] = existingUnits.slice(0, quantity).map((unit) => ({
-      unitId: unit.unitId || createUnitId(),
-      images: Array.isArray(unit.images)
-        ? unit.images
-            .slice(0, MAX_PRINT_IMAGES)
-            .filter((img) => img?.url && img?.publicId)
-        : [],
-    }));
-
-    while (units.length < quantity) {
-      units.push({ unitId: createUnitId(), images: [] });
-    }
-
-    setDraftUnits(units);
-    setEditingItemId(getItemId(item));
-  }, []);
-
-  const closeCustomization = useCallback(() => {
-    if (savingCustomization || uploadingKey) return;
-    setEditingItemId(null);
-    setDraftUnits([]);
-    setCustomizationError(null);
-  }, [savingCustomization, uploadingKey]);
-
-  const handleImageUpload = useCallback(
-    async (unitIndex: number, file: File) => {
-      const unit = draftUnits[unitIndex];
-      if (!unit) return;
-
-      setCustomizationError(null);
-
-      if (unit.images.length >= MAX_PRINT_IMAGES) {
-        setCustomizationError("Maximum 6 images are allowed for each product.");
-        return;
-      }
-      if (!file.type.startsWith("image/")) {
-        setCustomizationError("Please select an image file.");
-        return;
-      }
-      if (file.size > MAX_UPLOAD_SIZE) {
-        setCustomizationError("Image must be 10MB or smaller.");
-        return;
-      }
-
-      const uploadKey = `${unit.unitId}-${Date.now()}`;
-      try {
-        setUploadingKey(uploadKey);
-        const uploaded = await uploadPrintImage(file);
-        if (!uploaded) return;
-
-        setDraftUnits((prev) =>
-          prev.map((curr, idx) => {
-            if (idx !== unitIndex) return curr;
-            if (curr.images.length >= MAX_PRINT_IMAGES) return curr;
-            return { ...curr, images: [...curr.images, uploaded] };
-          })
-        );
-      } catch (uploadError) {
-        console.error("Print image upload error:", uploadError);
-        setCustomizationError(
-          uploadError instanceof Error ? uploadError.message : "Failed to upload image."
-        );
-      } finally {
-        setUploadingKey(null);
-      }
-    },
-    [draftUnits, uploadPrintImage]
-  );
-
-  const removeDraftImage = useCallback(
-    (unitIndex: number, imageIndex: number) => {
-      if (savingCustomization || uploadingKey) return;
-      setDraftUnits((prev) =>
-        prev.map((unit, idx) => {
-          if (idx !== unitIndex) return unit;
-          return {
-            ...unit,
-            images: unit.images.filter((_, currIdx) => currIdx !== imageIndex),
-          };
-        })
-      );
-      setCustomizationError(null);
-    },
-    [savingCustomization, uploadingKey]
-  );
-
-  const handleSaveCustomization = useCallback(async () => {
-    if (!editingItemId) return;
-    const item = items.find((curr) => getItemId(curr) === editingItemId);
-    if (!item) {
-      setCustomizationError("Cart item could not be found.");
-      return;
-    }
-
-    const quantity = Math.max(1, Number(item.quantity) || 1);
-    if (draftUnits.length !== quantity) {
-      setCustomizationError("The number of print units does not match the quantity.");
-      return;
-    }
-
-    const invalidIndex = draftUnits.findIndex(
-      (u) => u.images.length < 1 || u.images.length > MAX_PRINT_IMAGES
+  function CartIcon({
+    className = "",
+  }: {
+    className?: string;
+  }) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle
+          cx="8"
+          cy="21"
+          r="1"
+        />
+        <circle
+          cx="19"
+          cy="21"
+          r="1"
+        />
+        <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
+      </svg>
     );
-    if (invalidIndex !== -1) {
-      setCustomizationError(`Product ${invalidIndex + 1} must have 1–6 images.`);
-      return;
-    }
-
-    try {
-      setSavingCustomization(true);
-      const success = await savePrintCustomization(editingItemId, draftUnits);
-      if (!success) return;
-      setEditingItemId(null);
-      setDraftUnits([]);
-      setCustomizationError(null);
-    } catch (saveError) {
-      console.error("Save customization error:", saveError);
-      setCustomizationError(
-        saveError instanceof Error ? saveError.message : "Failed to save print images."
-      );
-    } finally {
-      setSavingCustomization(false);
-    }
-  }, [editingItemId, items, draftUnits, savePrintCustomization]);
-
-  const changeQuantity = useCallback(
-    async (itemId: string, currentQuantity: number, nextQuantity: number) => {
-      if (nextQuantity < 1 || nextQuantity === currentQuantity || updating) return;
-      setActionError(null);
-      const success = await updateQuantity(itemId, nextQuantity);
-      if (!success) {
-        setActionError("Unable to update quantity. Please try again.");
-      }
-    },
-    [updateQuantity, updating]
-  );
-
-  const handleRemove = useCallback(
-    async (itemId: string) => {
-      if (updating) return;
-      setActionError(null);
-      const success = await removeItem(itemId);
-      if (!success) {
-        setActionError("Unable to remove this item. Please try again.");
-      }
-    },
-    [removeItem, updating]
-  );
-
-  const handleCheckout = useCallback(() => {
-    if (!isCartPrintReady || updating) return;
-    if (isSignedIn) {
-      router.push("/checkout");
-    } else {
-      router.push("/sign-in?redirect_url=/checkout");
-    }
-  }, [isCartPrintReady, updating, isSignedIn, router]);
-
-  if (loading) {
-    return <CartSkeleton />;
   }
 
-  return (
-    <div className="min-h-[100svh] overflow-x-hidden bg-[#F7F7F5]">
-      <Navbar />
+  function TrashIcon({
+    className = "",
+  }: {
+    className?: string;
+  }) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M3 6h18" />
+        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+      </svg>
+    );
+  }
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-36 pt-[88px] sm:px-6 sm:pb-28 sm:pt-[104px] lg:px-8 lg:pb-24">
-        {/* HEADER */}
-        <header className="mb-6 sm:mb-8">
-          <div className="mb-3 flex items-center gap-2">
-            <span className="h-[2px] w-7 bg-[#B9954F]" />
-            <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#B9954F] sm:text-[10px]">
-              Your Selection
-            </span>
-          </div>
+  function ArrowRightIcon({
+    className = "",
+  }: {
+    className?: string;
+  }) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M5 12h14" />
+        <path d="m12 5 7 7-7 7" />
+      </svg>
+    );
+  }
 
-          <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-            <div>
-              <h1 className="text-[29px] font-extrabold leading-[1.05] tracking-[-0.035em] text-[#0A1B2E] sm:text-4xl">
-                Cart
-              </h1>
-              <p className="mt-2 text-[12px] font-medium text-[#64748B] sm:text-sm">
-                {itemCount} {itemCount === 1 ? "item" : "items"} · {totalPhysicalProducts} physical {totalPhysicalProducts === 1 ? "product" : "products"}
-              </p>
-            </div>
+  function ArrowLeftIcon() {
+    return (
+      <svg
+        width="17"
+        height="17"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M19 12H5" />
+        <path d="m12 19-7-7 7-7" />
+      </svg>
+    );
+  }
 
-            {items.length > 0 && (
-              <Link
-                href="/products"
-                className="inline-flex min-h-11 w-fit transform-gpu items-center gap-2 rounded-[8px] border border-[#DDE2E7] bg-white px-4 text-xs font-bold text-[#0A1B2E] transition-colors duration-150 hover:border-[#B9954F] hover:bg-[#FBFAF6] active:scale-[0.98]"
-              >
-                <ArrowLeftIcon />
-                Continue Shopping
-              </Link>
-            )}
-          </div>
-        </header>
+  function UploadIcon({
+    className = "",
+  }: {
+    className?: string;
+  }) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M12 16V4" />
+        <path d="m7 9 5-5 5 5" />
+        <path d="M5 20h14" />
+      </svg>
+    );
+  }
 
-        {error && (
-          <div className="mb-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
-            <p className="text-xs font-semibold leading-5 text-red-600">{error}</p>
-          </div>
-        )}
+  function CheckIcon({
+    className = "",
+  }: {
+    className?: string;
+  }) {
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="m5 12 4 4L19 6" />
+      </svg>
+    );
+  }
 
-        {actionError && (
-          <div className="mb-5 flex items-start justify-between gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
-            <p className="text-xs font-semibold leading-5 text-red-600">{actionError}</p>
-            <button
-              type="button"
-              onClick={() => setActionError(null)}
-              className="shrink-0 text-red-500 transform-gpu active:scale-95"
-              aria-label="Close error"
-            >
-              <XIcon />
-            </button>
-          </div>
-        )}
+  function XIcon() {
+    return (
+      <svg
+        width="17"
+        height="17"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </svg>
+    );
+  }
 
-        {items.length === 0 ? (
-          <section className="flex min-h-[55vh] flex-col items-center justify-center rounded-[12px] border border-[#E5E7EB] bg-white px-5 py-16 text-center sm:min-h-[60vh] sm:px-8">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F5F2E8] text-[#B9954F] sm:h-20 sm:w-20">
-              <CartIcon className="h-7 w-7 sm:h-8 sm:w-8" />
-            </div>
-            <h2 className="mt-5 text-xl font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-2xl">
-              Your cart is empty
-            </h2>
-            <p className="mx-auto mt-2 max-w-sm text-[13px] leading-6 text-[#64748B] sm:text-sm">
-              Looks like you haven't added anything yet. Explore our products and find something for your next print project.
-            </p>
-            <Link
-              href="/products"
-              className="mt-7 inline-flex min-h-12 transform-gpu items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-6 text-sm font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46] active:scale-[0.98]"
-            >
-              Browse Products
-              <ArrowRightIcon />
-            </Link>
-          </section>
-        ) : (
-          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12 lg:gap-8">
-            {/* ITEMS LIST */}
-            <section className="min-w-0 space-y-4 lg:col-span-8">
-              {items.map((item, index) => {
-                const itemId = getItemId(item);
-                const options = Object.entries(item.selections || {}).filter(([key, value]) => key && value);
-                const readyUnits = item.printUnits.filter((unit) => unit.images.length >= 1).length;
-                const ready =
-                  item.printUnits.length === item.quantity &&
-                  item.printUnits.every((unit) => unit.images.length >= 1);
+  function MinusIcon() {
+    return (
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <path d="M5 12h14" />
+      </svg>
+    );
+  }
 
-                return (
-                  <article key={itemId} className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white transform-gpu transition-shadow duration-200 hover:shadow-sm">
-                    <div className="p-4 sm:p-5">
-                      <div className="flex gap-3.5 sm:gap-5">
-                        <Link
-                          href={`/products/${encodeURIComponent(item.itemKey || item.productId)}`}
-                          className="relative h-[86px] w-[86px] shrink-0 overflow-hidden rounded-[9px] border border-[#E5E7EB] bg-[#F5F4F0] sm:h-[112px] sm:w-[112px]"
-                        >
-                          <ProductImage src={item.image} alt={item.name} priority={index < 2} />
-                        </Link>
+  function PlusIcon() {
+    return (
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        aria-hidden="true"
+      >
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </svg>
+    );
+  }
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="mb-1 text-[8px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F] sm:text-[9px]">
-                                Product
-                              </p>
-                              <Link
-                                href={`/products/${encodeURIComponent(item.itemKey || item.productId)}`}
-                                className="line-clamp-2 text-[14px] font-extrabold leading-5 text-[#0A1B2E] transition-colors duration-150 hover:text-[#B9954F] sm:text-base"
-                              >
-                                {item.name}
-                              </Link>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemove(itemId)}
-                              disabled={updating}
-                              aria-label={`Remove ${item.name}`}
-                              className="flex h-9 w-9 shrink-0 transform-gpu items-center justify-center rounded-full text-[#94A3B8] transition-colors duration-150 hover:bg-red-50 hover:text-red-600 active:scale-90 disabled:cursor-not-allowed disabled:opacity-40 sm:hidden"
-                            >
-                              <TrashIcon />
-                            </button>
-                          </div>
+  /* ============================================================
+    HELPERS
+  ============================================================ */
 
-                          {options.length > 0 && (
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              {options.map(([key, value]) => (
-                                <span key={`${key}-${value}`} className="max-w-full rounded-[5px] bg-[#F5F5F2] px-2 py-1 text-[9px] font-semibold text-[#64748B]">
-                                  <span className="text-[#94A3B8]">{key}: </span>{value}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+  function formatPrice(
+    value: number
+  ): string {
+    return `₹${Number(
+      value || 0
+    ).toLocaleString("en-IN")}`;
+  }
 
-                          <p className="mt-3 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
-                            {formatPrice(item.price)}
-                          </p>
-                        </div>
-                      </div>
+  function createUnitId(): string {
+    return `unit_${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
+  }
 
-                      {/* QUANTITY */}
-                      <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#EEF0F2] pt-4">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8]">Quantity</p>
-                          <div className="mt-1.5 flex h-11 items-center overflow-hidden rounded-[8px] border border-[#DDE2E7] bg-white">
-                            <button
-                              type="button"
-                              onClick={() => changeQuantity(itemId, item.quantity, item.quantity - 1)}
-                              disabled={updating || item.quantity <= 1}
-                              aria-label="Decrease quantity"
-                              className="flex h-11 w-11 transform-gpu items-center justify-center text-[#0A1B2E] transition-colors duration-150 hover:bg-[#F7F7F5] active:bg-[#E5E7EB] disabled:cursor-not-allowed disabled:opacity-30"
-                            >
-                              <MinusIcon />
-                            </button>
-                            <span className="flex h-11 min-w-[44px] items-center justify-center border-x border-[#DDE2E7] text-xs font-extrabold text-[#0A1B2E]">
-                              {item.quantity}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => changeQuantity(itemId, item.quantity, item.quantity + 1)}
-                              disabled={updating}
-                              aria-label="Increase quantity"
-                              className="flex h-11 w-11 transform-gpu items-center justify-center text-[#0A1B2E] transition-colors duration-150 hover:bg-[#F7F7F5] active:bg-[#E5E7EB] disabled:cursor-not-allowed disabled:opacity-30"
-                            >
-                              <PlusIcon />
-                            </button>
-                          </div>
-                        </div>
+  function getItemId(
+    item: CartItem
+  ): string {
+    return (
+      item._id ||
+      item.itemKey
+    );
+  }
 
-                        <div className="hidden sm:block">
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(itemId)}
-                            disabled={updating}
-                            className="inline-flex min-h-11 transform-gpu items-center gap-1.5 rounded-[7px] px-3 text-xs font-semibold text-[#64748B] transition-colors duration-150 hover:bg-red-50 hover:text-red-600 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <TrashIcon />
-                            Remove
-                          </button>
-                        </div>
+  /* ============================================================
+    PRODUCT IMAGE
+  ============================================================ */
 
-                        <div className="text-right">
-                          <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8]">Item Total</p>
-                          <p className="mt-1 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
-                            {formatPrice(item.price * item.quantity)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
+  /*
+  * IMPORTANT:
+  *
+  * We do NOT use:
+  *
+  * /images/product-placeholder.jpg
+  *
+  * because your console shows that
+  * file does not exist.
+  */
 
-                    {/* PRINT SECTION */}
-                    <div className="border-t border-[#E5E7EB] bg-[#FAFAF8] p-4 sm:p-5">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-sm font-extrabold text-[#0A1B2E]">Print Images</h3>
-                            <span className={`rounded-full px-2.5 py-1 text-[9px] font-extrabold ${ready ? "bg-green-50 text-green-700" : "bg-[#F5F2E8] text-[#8B6E32]"}`}>
-                              {readyUnits}/{item.quantity} ready
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
-                            Each physical product needs at least 1 print image.
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => startCustomization(item)}
-                          disabled={updating}
-                          className="inline-flex min-h-11 w-full transform-gpu items-center justify-center rounded-[8px] bg-[#0A1B2E] px-4 text-xs font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                        >
-                          {ready ? "Edit Images" : "Add Images"}
-                        </button>
-                      </div>
-
-                      {/* Small Thumbnails Strip */}
-                      <div className="mt-4 flex gap-2 overflow-x-auto pb-2 pt-1 will-change-scroll [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                        {item.printUnits.map((unit, idx) => (
-                          <div
-                            key={unit.unitId}
-                            className={`relative h-[58px] w-[58px] shrink-0 overflow-hidden rounded-[8px] border bg-white sm:h-[64px] sm:w-[64px] ${unit.images.length > 0 ? "border-green-200 shadow-sm" : "border-[#E6D6A9]"}`}
-                          >
-                            {unit.images.length > 0 ? (
-                              <>
-                                <Image
-                                  src={unit.images[0].url}
-                                  alt={`Product ${idx + 1} print preview`}
-                                  fill
-                                  sizes="64px"
-                                  className="object-cover"
-                                />
-                                <span className="absolute bottom-1 left-1 rounded-[4px] bg-[#0A1B2E]/85 px-1.5 py-0.5 text-[8px] font-bold text-white">
-                                  {unit.images.length}
-                                </span>
-                              </>
-                            ) : (
-                              <div className="flex h-full w-full flex-col items-center justify-center text-[#B9954F]">
-                                <UploadIcon />
-                                <span className="mt-0.5 text-[7px] font-bold">Product {idx + 1}</span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-
-            {/* DESKTOP SUMMARY */}
-            <aside className="hidden lg:sticky lg:top-[104px] lg:col-span-4 lg:block">
-              <div className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white shadow-sm">
-                <div className="border-b border-[#E5E7EB] px-5 py-4">
-                  <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#B9954F]">Order</p>
-                  <h2 className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">Summary</h2>
-                </div>
-
-                <div className="p-5">
-                  {isCartPrintReady ? (
-                    <div className="flex items-start gap-2.5 rounded-[9px] border border-green-200 bg-green-50 p-3">
-                      <span className="mt-0.5 text-green-700"><CheckIcon /></span>
-                      <div>
-                        <p className="text-xs font-extrabold text-green-700">Print images complete</p>
-                        <p className="mt-0.5 text-[10px] leading-4 text-green-600">All products are ready for checkout.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-[9px] border border-[#E6D6A9] bg-[#FBF7E9] p-3">
-                      <p className="text-xs font-extrabold text-[#8B6E32]">Print images required</p>
-                      <p className="mt-1 text-[10px] leading-5 text-[#8B6E32]">Add at least one image for every physical product before checkout.</p>
-                    </div>
-                  )}
-
-                  <div className="mt-6 space-y-3.5 text-sm">
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-[#64748B]">Items</span>
-                      <span className="font-bold text-[#0A1B2E]">{itemCount}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-[#64748B]">Subtotal</span>
-                      <span className="font-bold text-[#0A1B2E]">{formatPrice(subtotal)}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="text-[#64748B]">Shipping</span>
-                      <span className="font-bold text-[#0A1B2E]">{formatPrice(shippingCharge)}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex items-end justify-between gap-4 border-t border-[#E5E7EB] pt-5">
-                    <span className="text-sm font-extrabold text-[#0A1B2E]">Total</span>
-                    <span className="text-2xl font-extrabold tracking-[-0.02em] text-[#0A1B2E]">{formatPrice(total)}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleCheckout}
-                    disabled={updating || !isCartPrintReady}
-                    className="mt-6 flex h-14 w-full transform-gpu items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Proceed to Checkout
-                    <ArrowRightIcon />
-                  </button>
-
-                  {!isCartPrintReady && (
-                    <p className="mt-3 text-center text-[10px] leading-4 text-[#8B6E32]">
-                      Complete print images before checkout.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </aside>
-          </div>
-        )}
-      </main>
-
-      {/* ========================================================
-          MOBILE BOTTOM SUMMARY (Glassmorphism)
-      ======================================================== */}
-      {items.length > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[#E5E7EB]/80 bg-white/85 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl supports-[backdrop-filter]:bg-white/60 lg:hidden">
-          <div className="mx-auto w-full max-w-xl">
-            <div className="mb-2 flex items-center justify-between gap-4">
-              <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">Shipping</span>
-              <span className="text-xs font-bold text-[#64748B]">{formatPrice(shippingCharge)}</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
-                  Total · {itemCount} {itemCount === 1 ? "item" : "items"}
-                </p>
-                <p className="mt-0.5 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">{formatPrice(total)}</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleCheckout}
-                disabled={updating || !isCartPrintReady}
-                className="flex h-12 min-w-[145px] shrink-0 transform-gpu items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-4 text-xs font-extrabold text-white transition-colors duration-150 active:scale-[0.97] active:bg-[#081827] disabled:cursor-not-allowed disabled:opacity-40 shadow-sm"
-              >
-                Checkout
-                <ArrowRightIcon />
-              </button>
-            </div>
-
-            {!isCartPrintReady && (
-              <p className="mt-2 text-center text-[9px] font-semibold text-[#8B6E32]">
-                Add print images before checkout.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          CUSTOMIZATION MODAL (Slide up with Blur)
-      ======================================================== */}
-      {editingItemId && (
+  function ProductImage({
+    src,
+    alt,
+  }: {
+    src?: string;
+    alt: string;
+  }) {
+    if (!src) {
+      return (
         <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-[#0A1B2E]/60 backdrop-blur-sm sm:items-center sm:px-4 cart-modal-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="print-customization-title"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) closeCustomization();
-          }}
+          className="
+            flex
+            h-full
+            w-full
+            items-center
+            justify-center
+            bg-[#F5F4F0]
+            text-[#B9954F]
+          "
+          aria-label={alt}
         >
-          <div className="flex max-h-[92svh] w-full flex-col overflow-hidden rounded-t-[16px] bg-white shadow-[0_-10px_50px_rgba(10,27,46,0.18)] sm:max-h-[88svh] sm:max-w-2xl sm:rounded-[14px] cart-modal-content">
-            
-            {/* MODAL HEADER */}
-            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#E5E7EB] px-4 py-4 sm:px-5">
-              <div className="min-w-0">
-                <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#B9954F]">Custom Printing</p>
-                <h2 id="print-customization-title" className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-xl">
-                  Add Print Images
-                </h2>
-                <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
-                  Add 1–6 images for each physical product.
+          <CartIcon className="h-8 w-8 opacity-40" />
+        </div>
+      );
+    }
+
+    return (
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        sizes="
+          (max-width: 639px) 86px,
+          112px
+        "
+        className="
+          object-cover
+          transition-transform
+          duration-200
+          md:hover:scale-[1.02]
+        "
+      />
+    );
+  }
+
+  /* ============================================================
+    SKELETON
+  ============================================================ */
+
+  function CartSkeleton() {
+    return (
+      <div className="min-h-[100svh] bg-[#F7F7F5]">
+        <Navbar />
+
+        <main className="mx-auto w-full max-w-7xl px-4 pb-32 pt-[92px] sm:px-6 sm:pt-[108px] lg:px-8 lg:pb-24">
+          <div className="mb-7">
+            <div className="h-8 w-36 animate-pulse rounded bg-[#E5E7EB]" />
+
+            <div className="mt-3 h-4 w-48 animate-pulse rounded bg-[#E5E7EB]" />
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:gap-8">
+            <div className="space-y-4 lg:col-span-8">
+              {[1, 2].map(
+                (number) => (
+                  <div
+                    key={number}
+                    className="rounded-[12px] border border-[#E5E7EB] bg-white p-4 sm:p-5"
+                  >
+                    <div className="flex gap-4">
+                      <div className="h-24 w-24 shrink-0 animate-pulse rounded-[9px] bg-[#E5E7EB] sm:h-28 sm:w-28" />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="h-4 w-3/4 animate-pulse rounded bg-[#E5E7EB]" />
+
+                        <div className="mt-3 h-3 w-1/2 animate-pulse rounded bg-[#E5E7EB]" />
+
+                        <div className="mt-5 h-9 w-32 animate-pulse rounded bg-[#E5E7EB]" />
+                      </div>
+                    </div>
+
+                    <div className="mt-5 h-24 animate-pulse rounded-[9px] bg-[#E5E7EB]" />
+                  </div>
+                )
+              )}
+            </div>
+
+            <div className="lg:col-span-4">
+              <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-5">
+                <div className="h-5 w-36 animate-pulse rounded bg-[#E5E7EB]" />
+
+                <div className="mt-7 space-y-4">
+                  <div className="h-4 w-full animate-pulse rounded bg-[#E5E7EB]" />
+                  <div className="h-4 w-full animate-pulse rounded bg-[#E5E7EB]" />
+                  <div className="h-px w-full bg-[#E5E7EB]" />
+                  <div className="h-7 w-32 animate-pulse rounded bg-[#E5E7EB]" />
+                  <div className="h-12 w-full animate-pulse rounded bg-[#E5E7EB]" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  /* ============================================================
+    PRINT UNIT CARD
+  ============================================================ */
+
+  function PrintUnitCard({
+    unit,
+    index,
+    onUpload,
+    onRemove,
+    uploading,
+    disabled,
+  }: {
+    unit: PrintUnit;
+    index: number;
+    onUpload: (
+      file: File
+    ) => void;
+    onRemove: (
+      imageIndex: number
+    ) => void;
+    uploading: boolean;
+    disabled: boolean;
+  }) {
+    const inputId =
+      `print-upload-${unit.unitId}`;
+
+    return (
+      <div
+        className="
+          rounded-[10px]
+          border
+          border-[#E5E7EB]
+          bg-[#FAFAF8]
+          p-3
+          sm:p-4
+        "
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-extrabold text-[#0A1B2E] sm:text-sm">
+              Product {index + 1}
+            </p>
+
+            <p className="mt-0.5 text-[10px] text-[#64748B] sm:text-xs">
+              1–6 images
+            </p>
+          </div>
+
+          <span
+            className={`
+              shrink-0
+              rounded-full
+              px-2.5
+              py-1
+              text-[9px]
+              font-extrabold
+              ${
+                unit.images.length > 0
+                  ? "bg-green-50 text-green-700"
+                  : "bg-[#EEEBDD] text-[#8B6E32]"
+              }
+            `}
+          >
+            {unit.images.length}/
+            {MAX_PRINT_IMAGES}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {unit.images.map(
+            (
+              image,
+              imageIndex
+            ) => (
+              <div
+                key={`${image.publicId}-${imageIndex}`}
+                className="
+                  relative
+                  aspect-square
+                  overflow-hidden
+                  rounded-[8px]
+                  border
+                  border-[#DDE2E7]
+                  bg-white
+                "
+              >
+                <Image
+                  src={image.url}
+                  alt={`Product ${
+                    index + 1
+                  } print image ${
+                    imageIndex + 1
+                  }`}
+                  fill
+                  sizes="120px"
+                  className="object-cover"
+                />
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    onRemove(
+                      imageIndex
+                    )
+                  }
+                  disabled={
+                    disabled
+                  }
+                  aria-label="Remove image"
+                  className="
+                    absolute
+                    right-1.5
+                    top-1.5
+                    flex
+                    h-7
+                    w-7
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-[#0A1B2E]/90
+                    text-white
+                    transition-colors
+                    duration-150
+                    hover:bg-red-600
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                  "
+                >
+                  <XIcon />
+                </button>
+              </div>
+            )
+          )}
+
+          {unit.images.length <
+            MAX_PRINT_IMAGES && (
+            <label
+              htmlFor={inputId}
+              className={`
+                flex
+                aspect-square
+                cursor-pointer
+                flex-col
+                items-center
+                justify-center
+                rounded-[8px]
+                border
+                border-dashed
+                border-[#C9D0D8]
+                bg-white
+                text-[#64748B]
+                transition-colors
+                duration-150
+                hover:border-[#B9954F]
+                hover:bg-[#FBFAF6]
+                ${
+                  disabled
+                    ? "pointer-events-none opacity-50"
+                    : ""
+                }
+              `}
+            >
+              {uploading ? (
+                <span className="h-5 w-5 animate-spin rounded-full border-2 border-[#D8DDE3] border-t-[#B9954F]" />
+              ) : (
+                <>
+                  <UploadIcon />
+
+                  <span className="mt-1.5 text-[9px] font-bold">
+                    Add image
+                  </span>
+                </>
+              )}
+
+              <input
+                id={inputId}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                disabled={
+                  disabled
+                }
+                onChange={(
+                  event
+                ) => {
+                  const file =
+                    event.target
+                      .files?.[0];
+
+                  if (file) {
+                    onUpload(file);
+                  }
+
+                  event.target.value =
+                    "";
+                }}
+              />
+            </label>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ============================================================
+    CART PAGE
+  ============================================================ */
+
+  export default function CartPage() {
+    const router =
+      useRouter();
+
+    const {
+      isSignedIn,
+    } = useAuth();
+
+    const {
+      items,
+      subtotal,
+      shippingCharge,
+      total,
+      itemCount,
+
+      loading,
+      updating,
+      error,
+
+      updateQuantity,
+      removeItem,
+
+      uploadPrintImage,
+      savePrintCustomization,
+    } = useCart();
+
+    /* ==========================================================
+      STATE
+    ========================================================== */
+
+    const [
+      editingItemId,
+      setEditingItemId,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      draftUnits,
+      setDraftUnits,
+    ] = useState<
+      PrintUnit[]
+    >([]);
+
+    const [
+      uploadingKey,
+      setUploadingKey,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      savingCustomization,
+      setSavingCustomization,
+    ] = useState(false);
+
+    const [
+      customizationError,
+      setCustomizationError,
+    ] = useState<
+      string | null
+    >(null);
+
+    const [
+      actionError,
+      setActionError,
+    ] = useState<
+      string | null
+    >(null);
+
+    /* ==========================================================
+      BODY LOCK
+    ========================================================== */
+
+    useEffect(() => {
+      if (
+        !editingItemId
+      ) {
+        return;
+      }
+
+      const previous =
+        document.body.style
+          .overflow;
+
+      document.body.style.overflow =
+        "hidden";
+
+      return () => {
+        document.body.style.overflow =
+          previous;
+      };
+    }, [
+      editingItemId,
+    ]);
+
+    /* ==========================================================
+      ESC CLOSE
+    ========================================================== */
+
+    useEffect(() => {
+      if (
+        !editingItemId
+      ) {
+        return;
+      }
+
+      const handleKeyDown =
+        (
+          event: KeyboardEvent
+        ) => {
+          if (
+            event.key ===
+            "Escape"
+          ) {
+            if (
+              !savingCustomization &&
+              !uploadingKey
+            ) {
+              closeCustomization();
+            }
+          }
+        };
+
+      document.addEventListener(
+        "keydown",
+        handleKeyDown
+      );
+
+      return () => {
+        document.removeEventListener(
+          "keydown",
+          handleKeyDown
+        );
+      };
+    }, [
+      editingItemId,
+      savingCustomization,
+      uploadingKey,
+    ]);
+
+    /* ==========================================================
+      CHECK PRINT READINESS
+    ========================================================== */
+
+    const isCartPrintReady =
+      useMemo(() => {
+        if (
+          items.length ===
+          0
+        ) {
+          return false;
+        }
+
+        return items.every(
+          (item) => {
+            const quantity =
+              Math.max(
+                1,
+                Number(
+                  item.quantity
+                ) || 1
+              );
+
+            if (
+              item.printUnits
+                .length !==
+              quantity
+            ) {
+              return false;
+            }
+
+            return item.printUnits.every(
+              (unit) =>
+                unit.images.length >=
+                1 &&
+                unit.images.length <=
+                  MAX_PRINT_IMAGES
+            );
+          }
+        );
+      }, [items]);
+
+    /* ==========================================================
+      TOTAL PHYSICAL PRODUCTS
+    ========================================================== */
+
+    const totalPhysicalProducts =
+      useMemo(
+        () =>
+          items.reduce(
+            (
+              totalCount,
+              item
+            ) =>
+              totalCount +
+              Math.max(
+                0,
+                Number(
+                  item.quantity
+                ) || 0
+              ),
+            0
+          ),
+        [items]
+      );
+
+    /* ==========================================================
+      START CUSTOMIZATION
+    ========================================================== */
+
+    const startCustomization =
+      useCallback(
+        (item: CartItem) => {
+          setActionError(
+            null
+          );
+
+          setCustomizationError(
+            null
+          );
+
+          const quantity =
+            Math.max(
+              1,
+              Number(
+                item.quantity
+              ) || 1
+            );
+
+          const existingUnits =
+            Array.isArray(
+              item.printUnits
+            )
+              ? item.printUnits
+              : [];
+
+          const units: PrintUnit[] =
+            existingUnits
+              .slice(
+                0,
+                quantity
+              )
+              .map(
+                (
+                  unit,
+                  index
+                ) => ({
+                  unitId:
+                    unit.unitId ||
+                    createUnitId(),
+
+                  images:
+                    Array.isArray(
+                      unit.images
+                    )
+                      ? unit.images
+                          .slice(
+                            0,
+                            MAX_PRINT_IMAGES
+                          )
+                          .filter(
+                            (
+                              image
+                            ) =>
+                              image?.url &&
+                              image?.publicId
+                          )
+                      : [],
+                })
+              );
+
+          while (
+            units.length <
+            quantity
+          ) {
+            units.push({
+              unitId:
+                createUnitId(),
+
+              images: [],
+            });
+          }
+
+          setDraftUnits(
+            units
+          );
+
+          setEditingItemId(
+            getItemId(item)
+          );
+        },
+        []
+      );
+
+    /* ==========================================================
+      CLOSE CUSTOMIZATION
+    ========================================================== */
+
+    const closeCustomization =
+      useCallback(() => {
+        if (
+          savingCustomization ||
+          uploadingKey
+        ) {
+          return;
+        }
+
+        setEditingItemId(
+          null
+        );
+
+        setDraftUnits(
+          []
+        );
+
+        setCustomizationError(
+          null
+        );
+      }, [
+        savingCustomization,
+        uploadingKey,
+      ]);
+
+    /* ==========================================================
+      UPLOAD IMAGE
+    ========================================================== */
+
+    const handleImageUpload =
+      useCallback(
+        async (
+          unitIndex: number,
+          file: File
+        ) => {
+          const unit =
+            draftUnits[
+              unitIndex
+            ];
+
+          if (!unit) {
+            return;
+          }
+
+          setCustomizationError(
+            null
+          );
+
+          if (
+            unit.images.length >=
+            MAX_PRINT_IMAGES
+          ) {
+            setCustomizationError(
+              "Maximum 6 images are allowed for each product."
+            );
+
+            return;
+          }
+
+          if (
+            !file.type.startsWith(
+              "image/"
+            )
+          ) {
+            setCustomizationError(
+              "Please select an image file."
+            );
+
+            return;
+          }
+
+          if (
+            file.size >
+            MAX_UPLOAD_SIZE
+          ) {
+            setCustomizationError(
+              "Image must be 10MB or smaller."
+            );
+
+            return;
+          }
+
+          const uploadKey =
+            `${unit.unitId}-${Date.now()}`;
+
+          try {
+            setUploadingKey(
+              uploadKey
+            );
+
+            const uploaded =
+              await uploadPrintImage(
+                file
+              );
+
+            if (
+              !uploaded
+            ) {
+              return;
+            }
+
+            setDraftUnits(
+              (
+                previous
+              ) =>
+                previous.map(
+                  (
+                    current,
+                    index
+                  ) => {
+                    if (
+                      index !==
+                      unitIndex
+                    ) {
+                      return current;
+                    }
+
+                    if (
+                      current.images
+                        .length >=
+                      MAX_PRINT_IMAGES
+                    ) {
+                      return current;
+                    }
+
+                    return {
+                      ...current,
+
+                      images: [
+                        ...current.images,
+                        uploaded,
+                      ],
+                    };
+                  }
+                )
+            );
+          } catch (
+            uploadError
+          ) {
+            console.error(
+              "Print image upload error:",
+              uploadError
+            );
+
+            setCustomizationError(
+              uploadError instanceof
+                Error
+                ? uploadError.message
+                : "Failed to upload image."
+            );
+          } finally {
+            setUploadingKey(
+              null
+            );
+          }
+        },
+        [
+          draftUnits,
+          uploadPrintImage,
+        ]
+      );
+
+    /* ==========================================================
+      REMOVE IMAGE
+    ========================================================== */
+
+    const removeDraftImage =
+      useCallback(
+        (
+          unitIndex: number,
+          imageIndex: number
+        ) => {
+          if (
+            savingCustomization ||
+            uploadingKey
+          ) {
+            return;
+          }
+
+          setDraftUnits(
+            (
+              previous
+            ) =>
+              previous.map(
+                (
+                  unit,
+                  index
+                ) => {
+                  if (
+                    index !==
+                    unitIndex
+                  ) {
+                    return unit;
+                  }
+
+                  return {
+                    ...unit,
+
+                    images:
+                      unit.images.filter(
+                        (
+                          _,
+                          currentIndex
+                        ) =>
+                          currentIndex !==
+                          imageIndex
+                      ),
+                  };
+                }
+              )
+          );
+
+          setCustomizationError(
+            null
+          );
+        },
+        [
+          savingCustomization,
+          uploadingKey,
+        ]
+      );
+
+    /* ==========================================================
+      SAVE CUSTOMIZATION
+    ========================================================== */
+
+    const handleSaveCustomization =
+      useCallback(
+        async () => {
+          if (
+            !editingItemId
+          ) {
+            return;
+          }
+
+          const item =
+            items.find(
+              (current) =>
+                getItemId(
+                  current
+                ) ===
+                editingItemId
+            );
+
+          if (!item) {
+            setCustomizationError(
+              "Cart item could not be found."
+            );
+
+            return;
+          }
+
+          const quantity =
+            Math.max(
+              1,
+              Number(
+                item.quantity
+              ) || 1
+            );
+
+          if (
+            draftUnits.length !==
+            quantity
+          ) {
+            setCustomizationError(
+              "The number of print units does not match the quantity."
+            );
+
+            return;
+          }
+
+          const invalidIndex =
+            draftUnits.findIndex(
+              (unit) =>
+                unit.images.length <
+                  1 ||
+                unit.images.length >
+                  MAX_PRINT_IMAGES
+            );
+
+          if (
+            invalidIndex !==
+            -1
+          ) {
+            setCustomizationError(
+              `Product ${
+                invalidIndex + 1
+              } must have 1–6 images.`
+            );
+
+            return;
+          }
+
+          try {
+            setSavingCustomization(
+              true
+            );
+
+            const success =
+              await savePrintCustomization(
+                editingItemId,
+                draftUnits
+              );
+
+            if (
+              !success
+            ) {
+              return;
+            }
+
+            setEditingItemId(
+              null
+            );
+
+            setDraftUnits(
+              []
+            );
+
+            setCustomizationError(
+              null
+            );
+          } catch (
+            saveError
+          ) {
+            console.error(
+              "Save customization error:",
+              saveError
+            );
+
+            setCustomizationError(
+              saveError instanceof
+                Error
+                ? saveError.message
+                : "Failed to save print images."
+            );
+          } finally {
+            setSavingCustomization(
+              false
+            );
+          }
+        },
+        [
+          editingItemId,
+          items,
+          draftUnits,
+          savePrintCustomization,
+        ]
+      );
+
+    /* ==========================================================
+      QUANTITY
+    ========================================================== */
+
+    const changeQuantity =
+      useCallback(
+        async (
+          itemId: string,
+          currentQuantity: number,
+          nextQuantity: number
+        ) => {
+          if (
+            nextQuantity < 1 ||
+            nextQuantity ===
+              currentQuantity ||
+            updating
+          ) {
+            return;
+          }
+
+          setActionError(
+            null
+          );
+
+          const success =
+            await updateQuantity(
+              itemId,
+              nextQuantity
+            );
+
+          if (
+            !success
+          ) {
+            setActionError(
+              "Unable to update quantity. Please try again."
+            );
+          }
+        },
+        [
+          updateQuantity,
+          updating,
+        ]
+      );
+
+    /* ==========================================================
+      REMOVE ITEM
+    ========================================================== */
+
+    const handleRemove =
+      useCallback(
+        async (
+          itemId: string
+        ) => {
+          if (
+            updating
+          ) {
+            return;
+          }
+
+          setActionError(
+            null
+          );
+
+          const success =
+            await removeItem(
+              itemId
+            );
+
+          if (
+            !success
+          ) {
+            setActionError(
+              "Unable to remove this item. Please try again."
+            );
+          }
+        },
+        [
+          removeItem,
+          updating,
+        ]
+      );
+
+    /* ==========================================================
+      CHECKOUT
+    ========================================================== */
+
+    const handleCheckout =
+      useCallback(() => {
+        if (
+          !isCartPrintReady ||
+          updating
+        ) {
+          return;
+        }
+
+        if (
+          isSignedIn
+        ) {
+          router.push(
+            "/checkout"
+          );
+        } else {
+          router.push(
+            "/sign-in?redirect_url=/checkout"
+          );
+        }
+      }, [
+        isCartPrintReady,
+        updating,
+        isSignedIn,
+        router,
+      ]);
+
+    /* ==========================================================
+      LOADING
+    ========================================================== */
+
+    if (
+      loading
+    ) {
+      return (
+        <CartSkeleton />
+      );
+    }
+
+    /* ==========================================================
+      PAGE
+    ========================================================== */
+
+    return (
+      <div className="min-h-[100svh] overflow-x-hidden bg-[#F7F7F5]">
+        <Navbar />
+
+        <main className="mx-auto w-full max-w-7xl px-4 pb-36 pt-[88px] sm:px-6 sm:pb-28 sm:pt-[104px] lg:px-8 lg:pb-24">
+
+          {/* ==================================================
+              HEADER
+          ================================================== */}
+
+          <header className="mb-6 sm:mb-8">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-[2px] w-7 bg-[#B9954F]" />
+
+              <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#B9954F] sm:text-[10px]">
+                Your Selection
+              </span>
+            </div>
+
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+              <div>
+                <h1 className="text-[29px] font-extrabold leading-[1.05] tracking-[-0.035em] text-[#0A1B2E] sm:text-4xl">
+                  Cart
+                </h1>
+
+                <p className="mt-2 text-[12px] font-medium text-[#64748B] sm:text-sm">
+                  {itemCount}{" "}
+                  {itemCount ===
+                  1
+                    ? "item"
+                    : "items"}{" "}
+                  ·{" "}
+                  {
+                    totalPhysicalProducts
+                  }{" "}
+                  physical{" "}
+                  {totalPhysicalProducts ===
+                  1
+                    ? "product"
+                    : "products"}
                 </p>
               </div>
+
+              {items.length >
+                0 && (
+                <Link
+                  href="/products"
+                  className="
+                    inline-flex
+                    min-h-10
+                    w-fit
+                    items-center
+                    gap-2
+                    rounded-[8px]
+                    border
+                    border-[#DDE2E7]
+                    bg-white
+                    px-4
+                    text-xs
+                    font-bold
+                    text-[#0A1B2E]
+                    transition-colors
+                    duration-150
+                    hover:border-[#B9954F]
+                    hover:bg-[#FBFAF6]
+                  "
+                >
+                  <ArrowLeftIcon />
+                  Continue Shopping
+                </Link>
+              )}
+            </div>
+          </header>
+
+          {/* ==================================================
+              PROVIDER ERROR
+          ================================================== */}
+
+          {error && (
+            <div className="mb-5 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-xs font-semibold leading-5 text-red-600">
+                {error}
+              </p>
+            </div>
+          )}
+
+          {/* ==================================================
+              ACTION ERROR
+          ================================================== */}
+
+          {actionError && (
+            <div className="mb-5 flex items-start justify-between gap-3 rounded-[10px] border border-red-200 bg-red-50 px-4 py-3">
+              <p className="text-xs font-semibold leading-5 text-red-600">
+                {actionError}
+              </p>
+
               <button
                 type="button"
-                onClick={closeCustomization}
-                disabled={savingCustomization || Boolean(uploadingKey)}
-                aria-label="Close print customization"
-                className="flex h-10 w-10 shrink-0 transform-gpu items-center justify-center rounded-full text-[#64748B] transition-colors duration-150 hover:bg-[#F7F7F5] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={() =>
+                  setActionError(
+                    null
+                  )
+                }
+                className="shrink-0 text-red-500"
+                aria-label="Close error"
               >
                 <XIcon />
               </button>
             </div>
+          )}
 
-            {/* MODAL CONTENT */}
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin] sm:px-5 sm:py-5">
-              {customizationError && (
-                <div className="mb-4 rounded-[9px] border border-red-200 bg-red-50 px-3.5 py-3">
-                  <p className="text-xs font-semibold leading-5 text-red-600">{customizationError}</p>
-                </div>
-              )}
-              <div className="space-y-3">
-                {draftUnits.map((unit, index) => (
-                  <PrintUnitCard
-                    key={unit.unitId}
-                    unit={unit}
-                    index={index}
-                    onUpload={(file) => handleImageUpload(index, file)}
-                    onRemove={(imageIndex) => removeDraftImage(index, imageIndex)}
-                    uploading={Boolean(uploadingKey?.startsWith(unit.unitId))}
-                    disabled={savingCustomization || Boolean(uploadingKey)}
-                  />
-                ))}
-              </div>
-              <div className="mt-4 rounded-[9px] border border-[#E6D6A9] bg-[#FBF7E9] p-3.5">
-                <p className="text-[10px] font-bold leading-5 text-[#8B6E32] sm:text-xs">
-                  Maximum 6 images per physical product. Each image can be up to 10MB.
-                </p>
-              </div>
-            </div>
+          {/* ==================================================
+              EMPTY CART
+          ================================================== */}
 
-            {/* MODAL FOOTER */}
-            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[#E5E7EB] bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-5 sm:py-4 sm:pb-4">
-              <button
-                type="button"
-                onClick={closeCustomization}
-                disabled={savingCustomization || Boolean(uploadingKey)}
-                className="min-h-12 w-full transform-gpu rounded-[9px] border border-[#DDE2E7] bg-white px-5 text-sm font-bold text-[#64748B] transition-colors duration-150 hover:bg-[#F7F7F5] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          {items.length ===
+          0 ? (
+            <section className="flex min-h-[55vh] flex-col items-center justify-center rounded-[12px] border border-[#E5E7EB] bg-white px-5 py-16 text-center sm:min-h-[60vh] sm:px-8">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#F5F2E8] text-[#B9954F] sm:h-20 sm:w-20">
+                <CartIcon className="h-7 w-7 sm:h-8 sm:w-8" />
+              </div>
+
+              <h2 className="mt-5 text-xl font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-2xl">
+                Your cart is empty
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-sm text-[13px] leading-6 text-[#64748B] sm:text-sm">
+                Looks like you haven't
+                added anything yet.
+                Explore our products and
+                find something for your
+                next print project.
+              </p>
+
+              <Link
+                href="/products"
+                className="
+                  mt-7
+                  inline-flex
+                  min-h-11
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-[9px]
+                  bg-[#0A1B2E]
+                  px-6
+                  text-sm
+                  font-extrabold
+                  text-white
+                  transition-colors
+                  duration-150
+                  hover:bg-[#142C46]
+                "
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveCustomization}
-                disabled={savingCustomization || Boolean(uploadingKey)}
-                className="inline-flex min-h-12 w-full transform-gpu items-center justify-center gap-2 rounded-[9px] bg-[#0A1B2E] px-6 text-sm font-extrabold text-white transition-colors duration-150 hover:bg-[#142C46] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto shadow-sm"
-              >
-                {savingCustomization ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <CheckIcon />
-                    Save Images
-                  </>
+                Browse Products
+                <ArrowRightIcon />
+              </Link>
+            </section>
+          ) : (
+            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12 lg:gap-8">
+
+              {/* =================================================
+                  ITEMS
+              ================================================= */}
+
+              <section className="min-w-0 space-y-4 lg:col-span-8">
+                {items.map(
+                  (item) => {
+                    const itemId =
+                      getItemId(item);
+
+                    const options =
+                      Object.entries(
+                        item.selections ||
+                          {}
+                      ).filter(
+                        ([
+                          key,
+                          value,
+                        ]) =>
+                          key &&
+                          value
+                      );
+
+                    const readyUnits =
+                      item.printUnits.filter(
+                        (
+                          unit
+                        ) =>
+                          unit.images
+                            .length >=
+                          1
+                      ).length;
+
+                    const ready =
+                      item.printUnits.length ===
+                        item.quantity &&
+                      item.printUnits.every(
+                        (
+                          unit
+                        ) =>
+                          unit.images
+                            .length >=
+                          1
+                      );
+
+                    return (
+                      <article
+                        key={itemId}
+                        className="
+                          overflow-hidden
+                          rounded-[12px]
+                          border
+                          border-[#E5E7EB]
+                          bg-white
+                        "
+                      >
+                        <div className="p-4 sm:p-5">
+                          <div className="flex gap-3.5 sm:gap-5">
+
+                            {/* IMAGE */}
+
+                            <Link
+                              href={`/products/${encodeURIComponent(
+                                item.itemKey ||
+                                  item.productId
+                              )}`}
+                              className="
+                                relative
+                                h-[86px]
+                                w-[86px]
+                                shrink-0
+                                overflow-hidden
+                                rounded-[9px]
+                                border
+                                border-[#E5E7EB]
+                                bg-[#F5F4F0]
+                                sm:h-[112px]
+                                sm:w-[112px]
+                              "
+                            >
+                              <ProductImage
+                                src={
+                                  item.image
+                                }
+                                alt={
+                                  item.name
+                                }
+                              />
+                            </Link>
+
+                            {/* INFO */}
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="mb-1 text-[8px] font-extrabold uppercase tracking-[0.15em] text-[#B9954F] sm:text-[9px]">
+                                    Product
+                                  </p>
+
+                                  <Link
+                                    href={`/products/${encodeURIComponent(
+                                      item.itemKey ||
+                                        item.productId
+                                    )}`}
+                                    className="
+                                      line-clamp-2
+                                      text-[14px]
+                                      font-extrabold
+                                      leading-5
+                                      text-[#0A1B2E]
+                                      transition-colors
+                                      duration-150
+                                      hover:text-[#B9954F]
+                                      sm:text-base
+                                    "
+                                  >
+                                    {
+                                      item.name
+                                    }
+                                  </Link>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemove(
+                                      itemId
+                                    )
+                                  }
+                                  disabled={
+                                    updating
+                                  }
+                                  aria-label={`Remove ${item.name}`}
+                                  className="
+                                    flex
+                                    h-9
+                                    w-9
+                                    shrink-0
+                                    items-center
+                                    justify-center
+                                    rounded-full
+                                    text-[#94A3B8]
+                                    transition-colors
+                                    duration-150
+                                    hover:bg-red-50
+                                    hover:text-red-600
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-40
+                                    sm:hidden
+                                  "
+                                >
+                                  <TrashIcon />
+                                </button>
+                              </div>
+
+                              {options.length >
+                                0 && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {options.map(
+                                    ([
+                                      key,
+                                      value,
+                                    ]) => (
+                                      <span
+                                        key={`${key}-${value}`}
+                                        className="max-w-full rounded-[5px] bg-[#F5F5F2] px-2 py-1 text-[9px] font-semibold text-[#64748B]"
+                                      >
+                                        <span className="text-[#94A3B8]">
+                                          {
+                                            key
+                                          }
+                                          :
+                                        </span>{" "}
+                                        {
+                                          value
+                                        }
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              )}
+
+                              <p className="mt-3 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
+                                {formatPrice(
+                                  item.price
+                                )}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* QUANTITY */}
+
+                          <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#EEF0F2] pt-4">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8]">
+                                Quantity
+                              </p>
+
+                              <div className="mt-1.5 flex h-10 items-center overflow-hidden rounded-[8px] border border-[#DDE2E7] bg-white">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    changeQuantity(
+                                      itemId,
+                                      item.quantity,
+                                      item.quantity -
+                                        1
+                                    )
+                                  }
+                                  disabled={
+                                    updating ||
+                                    item.quantity <=
+                                      1
+                                  }
+                                  aria-label="Decrease quantity"
+                                  className="
+                                    flex
+                                    h-10
+                                    w-10
+                                    items-center
+                                    justify-center
+                                    text-[#0A1B2E]
+                                    transition-colors
+                                    duration-150
+                                    hover:bg-[#F7F7F5]
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-30
+                                  "
+                                >
+                                  <MinusIcon />
+                                </button>
+
+                                <span className="flex h-10 min-w-[40px] items-center justify-center border-x border-[#DDE2E7] text-xs font-extrabold text-[#0A1B2E]">
+                                  {
+                                    item.quantity
+                                  }
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    changeQuantity(
+                                      itemId,
+                                      item.quantity,
+                                      item.quantity +
+                                        1
+                                    )
+                                  }
+                                  disabled={
+                                    updating
+                                  }
+                                  aria-label="Increase quantity"
+                                  className="
+                                    flex
+                                    h-10
+                                    w-10
+                                    items-center
+                                    justify-center
+                                    text-[#0A1B2E]
+                                    transition-colors
+                                    duration-150
+                                    hover:bg-[#F7F7F5]
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-30
+                                  "
+                                >
+                                  <PlusIcon />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="hidden sm:block">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleRemove(
+                                    itemId
+                                  )
+                                }
+                                disabled={
+                                  updating
+                                }
+                                className="
+                                  inline-flex
+                                  min-h-9
+                                  items-center
+                                  gap-1.5
+                                  rounded-[7px]
+                                  px-3
+                                  text-xs
+                                  font-semibold
+                                  text-[#64748B]
+                                  transition-colors
+                                  duration-150
+                                  hover:bg-red-50
+                                  hover:text-red-600
+                                  disabled:cursor-not-allowed
+                                  disabled:opacity-40
+                                "
+                              >
+                                <TrashIcon />
+                                Remove
+                              </button>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#94A3B8]">
+                                Item Total
+                              </p>
+
+                              <p className="mt-1 text-sm font-extrabold text-[#0A1B2E] sm:text-base">
+                                {formatPrice(
+                                  item.price *
+                                    item.quantity
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* PRINT SECTION */}
+
+                        <div className="border-t border-[#E5E7EB] bg-[#FAFAF8] p-4 sm:p-5">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h3 className="text-sm font-extrabold text-[#0A1B2E]">
+                                  Print Images
+                                </h3>
+
+                                <span
+                                  className={`
+                                    rounded-full
+                                    px-2.5
+                                    py-1
+                                    text-[9px]
+                                    font-extrabold
+                                    ${
+                                      ready
+                                        ? "bg-green-50 text-green-700"
+                                        : "bg-[#F5F2E8] text-[#8B6E32]"
+                                    }
+                                  `}
+                                >
+                                  {
+                                    readyUnits
+                                  }
+                                  /
+                                  {
+                                    item.quantity
+                                  }{" "}
+                                  ready
+                                </span>
+                              </div>
+
+                              <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
+                                Each physical
+                                product needs
+                                at least 1 print
+                                image.
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                startCustomization(
+                                  item
+                                )
+                              }
+                              disabled={
+                                updating
+                              }
+                              className="
+                                inline-flex
+                                min-h-10
+                                w-full
+                                items-center
+                                justify-center
+                                rounded-[8px]
+                                bg-[#0A1B2E]
+                                px-4
+                                text-xs
+                                font-extrabold
+                                text-white
+                                transition-colors
+                                duration-150
+                                hover:bg-[#142C46]
+                                disabled:cursor-not-allowed
+                                disabled:opacity-50
+                                sm:w-auto
+                              "
+                            >
+                              {ready
+                                ? "Edit Images"
+                                : "Add Images"}
+                            </button>
+                          </div>
+
+                          <div className="mt-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                            {item.printUnits.map(
+                              (
+                                unit,
+                                index
+                              ) => (
+                                <div
+                                  key={
+                                    unit.unitId
+                                  }
+                                  className={`
+                                    relative
+                                    h-[58px]
+                                    w-[58px]
+                                    shrink-0
+                                    overflow-hidden
+                                    rounded-[8px]
+                                    border
+                                    bg-white
+                                    sm:h-[64px]
+                                    sm:w-[64px]
+                                    ${
+                                      unit.images
+                                        .length >
+                                      0
+                                        ? "border-green-200"
+                                        : "border-[#E6D6A9]"
+                                    }
+                                  `}
+                                >
+                                  {unit.images
+                                    .length >
+                                  0 ? (
+                                    <>
+                                      <Image
+                                        src={
+                                          unit
+                                            .images[0]
+                                            .url
+                                        }
+                                        alt={`Product ${
+                                          index +
+                                          1
+                                        } print preview`}
+                                        fill
+                                        sizes="64px"
+                                        className="object-cover"
+                                      />
+
+                                      <span className="absolute bottom-1 left-1 rounded-[4px] bg-[#0A1B2E]/85 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                                        {
+                                          unit
+                                            .images
+                                            .length
+                                        }
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <div className="flex h-full w-full flex-col items-center justify-center text-[#B9954F]">
+                                      <UploadIcon />
+
+                                      <span className="mt-0.5 text-[7px] font-bold">
+                                        Product{" "}
+                                        {
+                                          index +
+                                          1
+                                        }
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  }
                 )}
-              </button>
+              </section>
+
+              {/* =================================================
+                  DESKTOP SUMMARY
+              ================================================= */}
+
+              <aside className="hidden lg:sticky lg:top-[104px] lg:col-span-4 lg:block">
+                <div className="overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white">
+                  <div className="border-b border-[#E5E7EB] px-5 py-4">
+                    <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#B9954F]">
+                      Order
+                    </p>
+
+                    <h2 className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+                      Summary
+                    </h2>
+                  </div>
+
+                  <div className="p-5">
+
+                    {/* PRINT STATUS */}
+
+                    {isCartPrintReady ? (
+                      <div className="flex items-start gap-2.5 rounded-[9px] border border-green-200 bg-green-50 p-3">
+                        <span className="mt-0.5 text-green-700">
+                          <CheckIcon />
+                        </span>
+
+                        <div>
+                          <p className="text-xs font-extrabold text-green-700">
+                            Print images complete
+                          </p>
+
+                          <p className="mt-0.5 text-[10px] leading-4 text-green-600">
+                            All products are
+                            ready for
+                            checkout.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-[9px] border border-[#E6D6A9] bg-[#FBF7E9] p-3">
+                        <p className="text-xs font-extrabold text-[#8B6E32]">
+                          Print images required
+                        </p>
+
+                        <p className="mt-1 text-[10px] leading-5 text-[#8B6E32]">
+                          Add at least one
+                          image for every
+                          physical product
+                          before checkout.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* PRICE */}
+
+                    <div className="mt-6 space-y-3.5 text-sm">
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[#64748B]">
+                          Items
+                        </span>
+
+                        <span className="font-bold text-[#0A1B2E]">
+                          {itemCount}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[#64748B]">
+                          Subtotal
+                        </span>
+
+                        <span className="font-bold text-[#0A1B2E]">
+                          {formatPrice(
+                            subtotal
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-[#64748B]">
+                          Shipping
+                        </span>
+
+                        <span className="font-bold text-[#0A1B2E]">
+                          {formatPrice(
+                            shippingCharge
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* TOTAL */}
+
+                    <div className="mt-6 flex items-end justify-between gap-4 border-t border-[#E5E7EB] pt-5">
+                      <span className="text-sm font-extrabold text-[#0A1B2E]">
+                        Total
+                      </span>
+
+                      <span className="text-2xl font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+                        {formatPrice(
+                          total
+                        )}
+                      </span>
+                    </div>
+
+                    {/* CHECKOUT */}
+
+                    <button
+                      type="button"
+                      onClick={
+                        handleCheckout
+                      }
+                      disabled={
+                        updating ||
+                        !isCartPrintReady
+                      }
+                      className="
+                        mt-6
+                        flex
+                        h-13
+                        w-full
+                        items-center
+                        justify-center
+                        gap-2
+                        rounded-[9px]
+                        bg-[#0A1B2E]
+                        px-5
+                        text-sm
+                        font-extrabold
+                        text-white
+                        transition-colors
+                        duration-150
+                        hover:bg-[#142C46]
+                        disabled:cursor-not-allowed
+                        disabled:opacity-40
+                      "
+                    >
+                      Proceed to Checkout
+                      <ArrowRightIcon />
+                    </button>
+
+                    {!isCartPrintReady && (
+                      <p className="mt-3 text-center text-[10px] leading-4 text-[#8B6E32]">
+                        Complete print images
+                        before checkout.
+                      </p>
+                    )}
+
+                    <p className="mt-4 text-center text-[10px] leading-4 text-[#94A3B8]">
+                      Final order amount is
+                      calculated using the
+                      latest server pricing.
+                    </p>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+        </main>
+
+        {/* ========================================================
+            MOBILE SUMMARY
+        ======================================================== */}
+
+        {items.length >
+          0 && (
+          <div
+            className="
+              fixed
+              inset-x-0
+              bottom-0
+              z-40
+              border-t
+              border-[#E5E7EB]
+              bg-white
+              px-3
+              pb-[calc(0.75rem+env(safe-area-inset-bottom))]
+              pt-3
+              shadow-[0_-8px_28px_rgba(10,27,46,0.08)]
+              lg:hidden
+            "
+          >
+            <div className="mx-auto w-full max-w-xl">
+
+              <div className="mb-2 flex items-center justify-between gap-4">
+                <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+                  Shipping
+                </span>
+
+                <span className="text-xs font-bold text-[#64748B]">
+                  {formatPrice(
+                    shippingCharge
+                  )}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#94A3B8]">
+                    Total ·{" "}
+                    {itemCount}{" "}
+                    {itemCount ===
+                    1
+                      ? "item"
+                      : "items"}
+                  </p>
+
+                  <p className="mt-0.5 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E]">
+                    {formatPrice(
+                      total
+                    )}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleCheckout
+                  }
+                  disabled={
+                    updating ||
+                    !isCartPrintReady
+                  }
+                  className="
+                    flex
+                    h-12
+                    min-w-[145px]
+                    shrink-0
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-[9px]
+                    bg-[#0A1B2E]
+                    px-4
+                    text-xs
+                    font-extrabold
+                    text-white
+                    transition-colors
+                    duration-150
+                    active:bg-[#081827]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-40
+                  "
+                >
+                  Checkout
+                  <ArrowRightIcon />
+                </button>
+              </div>
+
+              {!isCartPrintReady && (
+                <p className="mt-2 text-center text-[9px] font-semibold text-[#8B6E32]">
+                  Add print images before
+                  checkout.
+                </p>
+              )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ======================================================
-          LIGHTWEIGHT CSS ANIMATIONS
-      ====================================================== */}
-      <style jsx global>{`
-        @keyframes cartFadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes cartSlideUp {
-          from { opacity: 0; transform: translate3d(0, 20px, 0); }
-          to { opacity: 1; transform: translate3d(0, 0, 0); }
-        }
-        .cart-modal-overlay {
-          animation: cartFadeIn 200ms ease-out both;
-          will-change: opacity;
-        }
-        .cart-modal-content {
-          animation: cartSlideUp 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
-          will-change: transform, opacity;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .cart-modal-overlay, .cart-modal-content {
-            animation: none;
-          }
-        }
-      `}</style>
-    </div>
-  );
-}
+        {/* ========================================================
+            CUSTOMIZATION MODAL
+        ======================================================== */}
+
+        {editingItemId && (
+          <div
+            className="
+              fixed
+              inset-0
+              z-[100]
+              flex
+              items-end
+              justify-center
+              bg-[#0A1B2E]/50
+              sm:items-center
+              sm:px-4
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="print-customization-title"
+            onMouseDown={(
+              event
+            ) => {
+              if (
+                event.target ===
+                event.currentTarget
+              ) {
+                closeCustomization();
+              }
+            }}
+          >
+            <div
+              className="
+                flex
+                max-h-[92svh]
+                w-full
+                flex-col
+                overflow-hidden
+                rounded-t-[16px]
+                bg-white
+                shadow-[0_-10px_50px_rgba(10,27,46,0.18)]
+                sm:max-h-[88svh]
+                sm:max-w-2xl
+                sm:rounded-[14px]
+              "
+            >
+              {/* HEADER */}
+
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#E5E7EB] px-4 py-4 sm:px-5">
+                <div className="min-w-0">
+                  <p className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#B9954F]">
+                    Custom Printing
+                  </p>
+
+                  <h2
+                    id="print-customization-title"
+                    className="mt-1 text-lg font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-xl"
+                  >
+                    Add Print Images
+                  </h2>
+
+                  <p className="mt-1 text-[10px] leading-5 text-[#64748B] sm:text-xs">
+                    Add 1–6 images for each
+                    physical product.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    closeCustomization
+                  }
+                  disabled={
+                    savingCustomization ||
+                    Boolean(
+                      uploadingKey
+                    )
+                  }
+                  aria-label="Close print customization"
+                  className="
+                    flex
+                    h-9
+                    w-9
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    text-[#64748B]
+                    transition-colors
+                    duration-150
+                    hover:bg-[#F7F7F5]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-40
+                  "
+                >
+                  <XIcon />
+                </button>
+              </div>
+
+              {/* CONTENT */}
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-width:thin] sm:px-5 sm:py-5">
+                {customizationError && (
+                  <div className="mb-4 rounded-[9px] border border-red-200 bg-red-50 px-3.5 py-3">
+                    <p className="text-xs font-semibold leading-5 text-red-600">
+                      {
+                        customizationError
+                      }
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-3">
+                  {draftUnits.map(
+                    (
+                      unit,
+                      index
+                    ) => (
+                      <PrintUnitCard
+                        key={
+                          unit.unitId
+                        }
+                        unit={unit}
+                        index={
+                          index
+                        }
+                        onUpload={(
+                          file
+                        ) =>
+                          handleImageUpload(
+                            index,
+                            file
+                          )
+                        }
+                        onRemove={(
+                          imageIndex
+                        ) =>
+                          removeDraftImage(
+                            index,
+                            imageIndex
+                          )
+                        }
+                        uploading={
+                          Boolean(
+                            uploadingKey?.startsWith(
+                              unit.unitId
+                            )
+                          )
+                        }
+                        disabled={
+                          savingCustomization ||
+                          Boolean(
+                            uploadingKey
+                          )
+                        }
+                      />
+                    )
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-[9px] border border-[#E6D6A9] bg-[#FBF7E9] p-3.5">
+                  <p className="text-[10px] font-bold leading-5 text-[#8B6E32] sm:text-xs">
+                    Maximum 6 images per
+                    physical product. Each
+                    image can be up to 10MB.
+                  </p>
+                </div>
+              </div>
+
+              {/* FOOTER */}
+
+              <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[#E5E7EB] bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:flex-row sm:items-center sm:justify-end sm:px-5 sm:py-4 sm:pb-4">
+                <button
+                  type="button"
+                  onClick={
+                    closeCustomization
+                  }
+                  disabled={
+                    savingCustomization ||
+                    Boolean(
+                      uploadingKey
+                    )
+                  }
+                  className="
+                    min-h-11
+                    w-full
+                    rounded-[9px]
+                    border
+                    border-[#DDE2E7]
+                    bg-white
+                    px-5
+                    text-sm
+                    font-bold
+                    text-[#64748B]
+                    transition-colors
+                    duration-150
+                    hover:bg-[#F7F7F5]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                    sm:w-auto
+                  "
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleSaveCustomization
+                  }
+                  disabled={
+                    savingCustomization ||
+                    Boolean(
+                      uploadingKey
+                    )
+                  }
+                  className="
+                    inline-flex
+                    min-h-11
+                    w-full
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-[9px]
+                    bg-[#0A1B2E]
+                    px-6
+                    text-sm
+                    font-extrabold
+                    text-white
+                    transition-colors
+                    duration-150
+                    hover:bg-[#142C46]
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
+                    sm:w-auto
+                  "
+                >
+                  {savingCustomization ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckIcon />
+                      Save Images
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }

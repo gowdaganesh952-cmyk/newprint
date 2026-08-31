@@ -1,12 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+
 import { CartProvider } from "./components/cart/CartProvider";
 import WhatsAppButton from "./components/WhatsAppButton";
-import "./globals.css";
 
-// ============================================================
-// METADATA
-// ============================================================
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
@@ -34,25 +32,49 @@ export const metadata: Metadata = {
     follow: true,
   },
 
+  manifest: "/manifest.webmanifest",
+
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      {
+        url: "/icons/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        url: "/icons/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+
+    apple: [
+      {
+        url: "/icons/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
+
+  appleWebApp: {
+    capable: true,
+    title: "New Print",
+    statusBarStyle: "default",
+  },
+
+  formatDetection: {
+    telephone: false,
   },
 };
-
-// ============================================================
-// VIEWPORT
-// ============================================================
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#FFFFFF",
+  themeColor: "#0A1B2E",
 };
-
-// ============================================================
-// ROOT LAYOUT
-// ============================================================
 
 export default function RootLayout({
   children,

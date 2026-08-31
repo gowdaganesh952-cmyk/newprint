@@ -1534,110 +1534,21 @@ export const updateItemQuantity =
    REMOVE ITEM
 ============================================================ */
 
+/* ============================================================
+   REMOVE ITEM
+============================================================ */
+
 export const removeItem =
   async (
     req,
     res
   ) => {
-    try {
-      const userId =
-        req.auth.userId;
-
-      const {
-        itemId,
-      } = req.params;
-
-      const cart =
-        await Cart.findOne({
-          userId,
-        });
-
-      if (!cart) {
-        return res.status(
-          404
-        ).json({
-          success: false,
-
-          message:
-            "Cart not found.",
-        });
-      }
-
-      const originalLength =
-        cart.items.length;
-
-      cart.items =
-        cart.items.filter(
-          (item) =>
-            item._id.toString() !==
-            itemId
-        );
-
-      if (
-        cart.items.length ===
-        originalLength
-      ) {
-        return res.status(
-          404
-        ).json({
-          success: false,
-
-          message:
-            "Item not found in cart.",
-        });
-      }
-
-      await cart.save();
-
-      const itemsWithProducts =
-        await attachProducts(
-          cart.items
-        );
-
-      const cartData =
-        buildCartResponse(
-          itemsWithProducts
-        );
-
-      const safeItems =
-        sanitizeCartItems(
-          cartData.items
-        );
-
-      return res.status(
-        200
-      ).json({
-        success: true,
-
-        message:
-          "Item removed.",
-
-        cart: {
-          ...cartData,
-
-          items:
-            safeItems,
-        },
-      });
-    } catch (
-      error
-    ) {
-      console.error(
-        "Remove Item Error:",
-        error
-      );
-
-      return res.status(
-        500
-      ).json({
-        success: false,
-
-        message:
-          "Failed to remove item.",
-      });
-    }
+    // code above
   };
 
+/* ============================================================
+   CLEAR CART
+============================================================ */
 /* ============================================================
    CLEAR CART
 ============================================================ */
