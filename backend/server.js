@@ -74,7 +74,8 @@ app.use(
     cors({
         origin(origin, callback) {
             // Allow requests without an Origin header.
-            // Useful for server-to-server requests and health checks.
+            // Useful for server-to-server requests,
+            // uptime monitors and health checks.
             if (!origin) {
                 return callback(null, true);
             }
@@ -117,25 +118,23 @@ app.use(
 // ============================================================
 
 /*
+ * Lightweight endpoint for:
+ *
+ * - Render health checks
+ * - External uptime monitoring
+ * - Service availability testing
+ *
  * IMPORTANT:
  *
- * Keep this endpoint lightweight.
+ * This endpoint intentionally does NOT connect to MongoDB.
  *
- * External uptime monitor:
+ * External uptime monitor can request:
  *
  * GET /health
  *
- * Example:
+ * every 10 minutes.
  *
- * https://your-render-service.onrender.com/health
- *
- * Configure your external monitor to request this
- * automatically every 10 minutes.
- *
- * DO NOT put setInterval() here.
- *
- * If Render suspends the service, the Node.js process
- * and its timers are also suspended.
+ * Do NOT use setInterval() here.
  */
 
 app.get(
@@ -163,7 +162,7 @@ app.get(
                 "New Print Backend Running 🚀",
             environment:
                 process.env.NODE_ENV ||
-                "development",
+                "production",
         });
     }
 );
@@ -278,11 +277,11 @@ app.use(
 // ============================================================
 
 /*
- * MongoDB connection is only required for /api routes.
+ * MongoDB is connected only for /api requests.
  *
- * /health does NOT reach this middleware.
+ * /health and / do NOT connect to MongoDB.
  *
- * This keeps the health endpoint extremely lightweight.
+ * This keeps health checks extremely fast and lightweight.
  */
 
 app.use(
@@ -366,7 +365,10 @@ app.use(
             err?.stack || err
         );
 
+        // ----------------------------------------------------
         // CORS
+        // ----------------------------------------------------
+
         if (
             err?.message ===
             "Not allowed by CORS"
@@ -378,7 +380,10 @@ app.use(
             });
         }
 
-        // Multer
+        // ----------------------------------------------------
+        // MULTER
+        // ----------------------------------------------------
+
         if (
             err?.name === "MulterError"
         ) {
@@ -390,7 +395,10 @@ app.use(
             });
         }
 
-        // Authentication
+        // ----------------------------------------------------
+        // AUTHENTICATION
+        // ----------------------------------------------------
+
         if (
             err?.message ===
                 "Unauthenticated" ||
@@ -403,7 +411,10 @@ app.use(
             });
         }
 
-        // General error
+        // ----------------------------------------------------
+        // GENERAL ERROR
+        // ----------------------------------------------------
+
         return res
             .status(
                 err?.status || 500
@@ -422,51 +433,76 @@ app.use(
 );
 
 // ============================================================
-// LOCAL DEVELOPMENT SERVER
+// SERVER START
 // ============================================================
 
-if (
-    process.env.NODE_ENV !==
-    "production"
-) {
-  // ============================================================
-// START SERVER
-// ============================================================
+/*
+ * IMPORTANT FOR RENDER + VERCEL
+ *
+ * Vercel:
+ * - VERCEL environment variable is available.
+ * - Export the Express app.
+ * - Do NOT call app.listen().
+ *
+ * Render:
+ * - VERCEL is not present.
+ * - Render provides process.env.PORT.
+ * - Start Express on that port.
+ *
+ * Local:
+ * - VERCEL is not present.
+ * - Use PORT from environment or 5000.
+ */
 
-const PORT = process.env.PORT || 5000;
+const isVercel =
+    process.env.VERCEL === "1" ||
+    process.env.VERCEL === "true" ||
+    Boolean(process.env.VERCEL);
 
-app.listen(
-    PORT,
-    "0.0.0.0",
-    () => {
-        console.log(
-            "======================================"
-        );
+if (!isVercel) {
+    const PORT =
+        process.env.PORT || 5000;
 
-        console.log(
-            "🚀 New Print Backend Running"
-        );
+    app.listen(
+        PORT,
+        "0.0.0.0",
+        () => {
+            console.log(
+                "======================================"
+            );
 
-        console.log(
-            `🌐 Port: ${PORT}`
-        );
+            console.log(
+                "🚀 New Print Backend Running"
+            );
 
-        console.log(
-            `❤️ Health: /health`
-        );
+            console.log(
+                `🌐 Port: ${PORT}`
+            );
 
-        console.log(
-            `🌍 Environment: ${
-                process.env.NODE_ENV ||
-                "development"
-            }`
-        );
+            console.log(
+                "❤️ Health: /health"
+            );
 
-        console.log(
-            "======================================"
-        );
-    }
-);
+            console.log(
+                `🌍 Environment: ${
+                    process.env.NODE_ENV ||
+                    "development"
+                }`
+            );
+
+            console.log(
+                `☁️ Platform: ${
+                    process.env.RENDER === "true"
+                        ? "Render"
+                        : "Local"
+                }`
+            );
+
+            console.log(
+                "======================================"
+            );
+        }
+    );
 }
 
 // ============================================================
