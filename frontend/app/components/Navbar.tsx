@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useRef,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -20,37 +15,23 @@ import { useCart } from "./cart/CartProvider";
 // ============================================================
 
 const navLinks = [
-  {
-    name: "Home",
-    href: "/",
-  },
-  {
-    name: "Products",
-    href: "/products",
-  },
-  {
-    name: "About",
-    href: "/about",
-  },
-  {
-    name: "Contact",
-    href: "/contact",
-  },
+  { name: "Home", href: "/" },
+  { name: "Products", href: "/products" },
+  { name: "About", href: "/about" },
+  { name: "Contact", href: "/contact" },
 ];
 
 // ============================================================
-// CART ICON
+// ICONS
 // ============================================================
 
-function CartIcon({
-  mobile = false,
-}: {
-  mobile?: boolean;
-}) {
+function CartIcon({ mobile = false }: { mobile?: boolean }) {
+  const size = mobile ? 22 : 23;
+
   return (
     <svg
-      width={mobile ? 22 : 23}
-      height={mobile ? 22 : 23}
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -61,41 +42,13 @@ function CartIcon({
     >
       <circle cx="8" cy="21" r="1" />
       <circle cx="19" cy="21" r="1" />
-
       <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
     </svg>
   );
 }
 
-// ============================================================
-// MENU ICON
-// ============================================================
-
-function MenuIcon({
-  open,
-}: {
-  open: boolean;
-}) {
-  if (open) {
-    return (
-      <svg
-        width="23"
-        height="23"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M6 6L18 18" />
-        <path d="M18 6L6 18" />
-      </svg>
-    );
-  }
-
-  return (
+function MenuIcon({ open }: { open: boolean }) {
+  return open ? (
     <svg
       width="23"
       height="23"
@@ -104,7 +57,20 @@ function MenuIcon({
       stroke="currentColor"
       strokeWidth="1.8"
       strokeLinecap="round"
-      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 6L18 18" />
+      <path d="M18 6L6 18" />
+    </svg>
+  ) : (
+    <svg
+      width="23"
+      height="23"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
       aria-hidden="true"
     >
       <path d="M4 7H20" />
@@ -113,10 +79,6 @@ function MenuIcon({
     </svg>
   );
 }
-
-// ============================================================
-// ARROW ICON
-// ============================================================
 
 function ArrowIcon() {
   return (
@@ -142,26 +104,42 @@ function ArrowIcon() {
 // ============================================================
 
 export default function Navbar() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isScrolled, setIsScrolled] = useState(false);
-
   const pathname = usePathname();
 
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   const {
     itemCount,
-    isInitializing,
+    isInitializing: cartInitializing,
   } = useCart();
 
-  const scrollFrameRef = useRef<number | null>(
-    null
-  );
+  const [isOpen, setIsOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
 
-  const menuOpenRef = useRef(false);
+  // ==========================================================
+  // ROLE
+  // ==========================================================
+
+  /*
+   * IMPORTANT:
+   *
+   * The Navbar does NOT assign roles.
+   *
+   * Role assignment is handled by the server/auth flow.
+   *
+   * Existing users:
+   *   admin -> /admin
+   *   user  -> /dashboard
+   *
+   * A brand-new user with no role will temporarily fall back
+   * to /dashboard. Our sign-in/server flow will make sure the
+   * missing role is assigned as "user".
+   */
+
+  const role = user?.publicMetadata?.role;
 
   const dashboardPath =
-    user?.publicMetadata?.role === "admin"
+    role === "admin"
       ? "/admin"
       : "/dashboard";
 
@@ -170,61 +148,35 @@ export default function Navbar() {
   // ==========================================================
 
   useEffect(() => {
-    const updateScrollState = () => {
-      scrollFrameRef.current = null;
+    let frameId: number | null = null;
 
-      const nextScrolled =
-        window.scrollY > 12;
+    const update = () => {
+      frameId = null;
 
-      setIsScrolled((previous) => {
-        if (previous === nextScrolled) {
-          return previous;
-        }
+      const scrolled = window.scrollY > 12;
 
-        return nextScrolled;
-      });
+      setIsScrolled((previous) =>
+        previous === scrolled ? previous : scrolled
+      );
     };
 
     const handleScroll = () => {
-      if (
-        scrollFrameRef.current !== null
-      ) {
-        return;
-      }
+      if (frameId !== null) return;
 
-      scrollFrameRef.current =
-        window.requestAnimationFrame(
-          updateScrollState
-        );
+      frameId = window.requestAnimationFrame(update);
     };
 
-    /*
-     * Set the correct initial state immediately.
-     */
-    updateScrollState();
+    update();
 
-    window.addEventListener(
-      "scroll",
-      handleScroll,
-      {
-        passive: true,
-      }
-    );
+    window.addEventListener("scroll", handleScroll, {
+      passive: true,
+    });
 
     return () => {
-      window.removeEventListener(
-        "scroll",
-        handleScroll
-      );
+      window.removeEventListener("scroll", handleScroll);
 
-      if (
-        scrollFrameRef.current !== null
-      ) {
-        window.cancelAnimationFrame(
-          scrollFrameRef.current
-        );
-
-        scrollFrameRef.current = null;
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
       }
     };
   }, []);
@@ -234,47 +186,25 @@ export default function Navbar() {
   // ==========================================================
 
   useEffect(() => {
-    menuOpenRef.current = isOpen;
+    const root = document.documentElement;
+    const body = document.body;
 
-    /*
-     * The initial homepage loader also controls these classes.
-     *
-     * We therefore use classes instead of permanently
-     * overwriting the loader's scroll-lock state.
-     */
-    if (!isOpen) {
-      document.documentElement.classList.remove(
-        "newprint-menu-open"
-      );
-
-      document.body.classList.remove(
-        "newprint-menu-open"
-      );
-
-      return;
+    if (isOpen) {
+      root.classList.add("newprint-menu-open");
+      body.classList.add("newprint-menu-open");
+    } else {
+      root.classList.remove("newprint-menu-open");
+      body.classList.remove("newprint-menu-open");
     }
 
-    document.documentElement.classList.add(
-      "newprint-menu-open"
-    );
-
-    document.body.classList.add(
-      "newprint-menu-open"
-    );
-
     return () => {
-      document.documentElement.classList.remove(
-        "newprint-menu-open"
-      );
-
-      document.body.classList.remove(
-        "newprint-menu-open"
-      );
+      root.classList.remove("newprint-menu-open");
+      body.classList.remove("newprint-menu-open");
     };
   }, [isOpen]);
 
   // ==========================================================
-  // CLOSE MENU ON ROUTE CHANGE
+  // CLOSE ON ROUTE CHANGE
   // ==========================================================
 
   useEffect(() => {
@@ -286,33 +216,26 @@ export default function Navbar() {
   // ==========================================================
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+    if (!isOpen) return;
 
-    const handleEscape = (
-      event: KeyboardEvent
-    ) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setIsOpen(false);
       }
     };
 
-    document.addEventListener(
-      "keydown",
-      handleEscape
-    );
+    document.addEventListener("keydown", handleKeyDown);
 
     return () => {
       document.removeEventListener(
         "keydown",
-        handleEscape
+        handleKeyDown
       );
     };
   }, [isOpen]);
 
   // ==========================================================
-  // CLOSE MENU WHEN SCREEN BECOMES DESKTOP
+  // DESKTOP BREAKPOINT
   // ==========================================================
 
   useEffect(() => {
@@ -320,7 +243,7 @@ export default function Navbar() {
       "(min-width: 768px)"
     );
 
-    const handleMediaChange = (
+    const handleChange = (
       event: MediaQueryListEvent
     ) => {
       if (event.matches) {
@@ -330,13 +253,13 @@ export default function Navbar() {
 
     mediaQuery.addEventListener(
       "change",
-      handleMediaChange
+      handleChange
     );
 
     return () => {
       mediaQuery.removeEventListener(
         "change",
-        handleMediaChange
+        handleChange
       );
     };
   }, []);
@@ -360,16 +283,12 @@ export default function Navbar() {
   );
 
   // ==========================================================
-  // CLOSE MENU
+  // MENU ACTIONS
   // ==========================================================
 
   const closeMenu = useCallback(() => {
     setIsOpen(false);
   }, []);
-
-  // ==========================================================
-  // TOGGLE MENU
-  // ==========================================================
 
   const toggleMenu = useCallback(() => {
     setIsOpen((previous) => !previous);
@@ -391,10 +310,9 @@ export default function Navbar() {
         bg-white/95
         backdrop-blur-[10px]
         supports-[backdrop-filter]:bg-white/90
-        transition-[box-shadow,border-color,background-color]
+        transition-[box-shadow,border-color]
         duration-200
         ease-out
-        will-change-[box-shadow,border-color,background-color]
 
         ${
           isScrolled
@@ -465,19 +383,17 @@ export default function Navbar() {
             DESKTOP NAVIGATION
         ==================================================== */}
 
-        <div className="hidden items-center md:flex">
-          <nav
-            className="
-              flex
-              items-center
-              gap-6
-              lg:gap-8
-            "
-            aria-label="Desktop navigation"
-          >
+        <nav
+          className="
+            hidden
+            items-center
+            md:flex
+          "
+          aria-label="Desktop navigation"
+        >
+          <div className="flex items-center gap-6 lg:gap-8">
             {navLinks.map((link) => {
-              const active =
-                isLinkActive(link.href);
+              const active = isLinkActive(link.href);
 
               return (
                 <Link
@@ -513,7 +429,7 @@ export default function Navbar() {
                     after:-translate-x-1/2
                     after:rounded-full
                     after:bg-[#B9954F]
-                    after:transition-all
+                    after:transition-[width]
                     after:duration-200
 
                     ${
@@ -527,8 +443,8 @@ export default function Navbar() {
                 </Link>
               );
             })}
-          </nav>
-        </div>
+          </div>
+        </nav>
 
         {/* ====================================================
             DESKTOP ACTIONS
@@ -564,35 +480,32 @@ export default function Navbar() {
           >
             <CartIcon />
 
-            {!isInitializing &&
-              itemCount > 0 && (
-                <span
-                  className="
-                    absolute
-                    right-0
-                    top-0
-                    flex
-                    h-[17px]
-                    min-w-[17px]
-                    items-center
-                    justify-center
-                    rounded-full
-                    bg-[#B9954F]
-                    px-1
-                    text-[9px]
-                    font-extrabold
-                    leading-none
-                    text-white
-                  "
-                >
-                  {itemCount > 99
-                    ? "99+"
-                    : itemCount}
-                </span>
-              )}
+            {!cartInitializing && itemCount > 0 && (
+              <span
+                className="
+                  absolute
+                  right-0
+                  top-0
+                  flex
+                  h-[17px]
+                  min-w-[17px]
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#B9954F]
+                  px-1
+                  text-[9px]
+                  font-extrabold
+                  leading-none
+                  text-white
+                "
+              >
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            )}
           </Link>
 
-          {/* Signed out */}
+          {/* Logged out */}
 
           <Show when="signed-out">
             <Link
@@ -653,7 +566,7 @@ export default function Navbar() {
             </Link>
           </Show>
 
-          {/* Signed in */}
+          {/* Logged in */}
 
           <Show when="signed-in">
             <div className="flex items-center gap-2">
@@ -684,7 +597,6 @@ export default function Navbar() {
                 "
               >
                 Dashboard
-
                 <ArrowIcon />
               </Link>
 
@@ -733,32 +645,29 @@ export default function Navbar() {
           >
             <CartIcon mobile />
 
-            {!isInitializing &&
-              itemCount > 0 && (
-                <span
-                  className="
-                    absolute
-                    right-1
-                    top-1
-                    flex
-                    h-[17px]
-                    min-w-[17px]
-                    items-center
-                    justify-center
-                    rounded-full
-                    bg-[#B9954F]
-                    px-1
-                    text-[9px]
-                    font-extrabold
-                    leading-none
-                    text-white
-                  "
-                >
-                  {itemCount > 99
-                    ? "99+"
-                    : itemCount}
-                </span>
-              )}
+            {!cartInitializing && itemCount > 0 && (
+              <span
+                className="
+                  absolute
+                  right-1
+                  top-1
+                  flex
+                  h-[17px]
+                  min-w-[17px]
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-[#B9954F]
+                  px-1
+                  text-[9px]
+                  font-extrabold
+                  leading-none
+                  text-white
+                "
+              >
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            )}
           </Link>
 
           {/* Mobile menu */}
@@ -809,7 +718,7 @@ export default function Navbar() {
           transition-[max-height,opacity]
           duration-200
           ease-out
-          will-change-[max-height,opacity]
+
           ${
             isOpen
               ? "max-h-[calc(100dvh-66px)] opacity-100"
@@ -833,14 +742,11 @@ export default function Navbar() {
           "
           aria-label="Mobile navigation"
         >
-          {/* ==================================================
-              NAV LINKS
-          =================================================== */}
+          {/* Navigation links */}
 
           <div className="space-y-1">
             {navLinks.map((link) => {
-              const active =
-                isLinkActive(link.href);
+              const active = isLinkActive(link.href);
 
               return (
                 <Link
@@ -870,9 +776,7 @@ export default function Navbar() {
                     }
                   `}
                 >
-                  <span>
-                    {link.name}
-                  </span>
+                  <span>{link.name}</span>
 
                   {active && (
                     <span
@@ -890,15 +794,11 @@ export default function Navbar() {
             })}
           </div>
 
-          {/* ==================================================
-              MOBILE DIVIDER
-          =================================================== */}
+          {/* Divider */}
 
           <div className="my-4 h-px bg-[#E5E7EB]" />
 
-          {/* ==================================================
-              MOBILE AUTH
-          =================================================== */}
+          {/* Mobile authentication */}
 
           <div className="space-y-3">
             <Show when="signed-out">

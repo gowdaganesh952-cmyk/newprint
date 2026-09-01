@@ -2,16 +2,20 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import AdminLayoutShell from "./AdminLayoutShell";
 
-export default async function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AdminLayout({ children }) {
+  // ============================================================
+  // AUTHENTICATION
+  // ============================================================
+
   const { isAuthenticated, userId } = await auth();
 
   if (!isAuthenticated || !userId) {
     redirect("/sign-in");
   }
+
+  // ============================================================
+  // CURRENT USER
+  // ============================================================
 
   const user = await currentUser();
 
@@ -19,11 +23,17 @@ export default async function AdminLayout({
     redirect("/sign-in");
   }
 
-  const role = user.publicMetadata?.role;
+  // ============================================================
+  // ADMIN ONLY
+  // ============================================================
 
-  if (role !== "admin") {
+  if (user.publicMetadata?.role !== "admin") {
     redirect("/dashboard");
   }
+
+  // ============================================================
+  // ADMIN APP
+  // ============================================================
 
   return <AdminLayoutShell>{children}</AdminLayoutShell>;
 }
