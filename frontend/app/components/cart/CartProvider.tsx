@@ -6,10 +6,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
+import { useAuth } from "@clerk/nextjs";
 import { useApi } from "../../lib/api";
 
 /* ============================================================
@@ -61,6 +63,18 @@ export interface CartData {
   total: number;
   itemCount: number;
 }
+
+/* ============================================================
+   EMPTY CART
+============================================================ */
+
+const EMPTY_CART: CartData = {
+  items: [],
+  subtotal: 0,
+  shippingCharge: 0,
+  total: 0,
+  itemCount: 0,
+};
 
 /* ============================================================
    CONTEXT TYPE
@@ -149,7 +163,9 @@ function normalizePrintUnit(
       typeof unit?.unitId === "string" &&
       unit.unitId.trim()
         ? unit.unitId
-        : `unit_${index}_${Date.now()}`,
+        : `unit_${index}_${Date.now()}_${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
 
     images,
   };
@@ -181,6 +197,11 @@ function normalizeCartItem(
         )
       : [];
 
+  /*
+   * Never allow more physical units
+   * than the actual quantity.
+   */
+
   if (
     printUnits.length >
     quantity
@@ -191,6 +212,11 @@ function normalizeCartItem(
         quantity
       );
   }
+
+  /*
+   * Always keep exactly one print unit
+   * for every physical product.
+   */
 
   while (
     printUnits.length <
@@ -361,13 +387,9 @@ function normalizeCart(
 
   return {
     items,
-
     subtotal,
-
     shippingCharge,
-
     total,
-
     itemCount,
   };
 }
@@ -387,16 +409,26 @@ interface CartProviderProps {
 export function CartProvider({
   children,
 }: CartProviderProps) {
+  const {
+    isLoaded,
+    isSignedIn,
+    userId,
+  } = useAuth();
+
   const api = useApi();
 
+  /*
+   * Prevent an older request from overwriting
+   * the cart belonging to a newly logged-in user.
+   */
+
+  const requestVersion =
+    useRef(0);
+
   const [cart, setCart] =
-    useState<CartData>({
-      items: [],
-      subtotal: 0,
-      shippingCharge: 0,
-      total: 0,
-      itemCount: 0,
-    });
+    useState<CartData>(
+      EMPTY_CART
+    );
 
   const [loading, setLoading] =
     useState(true);
@@ -410,11 +442,55 @@ export function CartProvider({
     );
 
   /* ==========================================================
+     RESET LOCAL CART
+  ========================================================== */
+
+  const resetLocalCart =
+    useCallback(() => {
+      requestVersion.current += 1;
+
+      setCart(
+        EMPTY_CART
+      );
+
+      setError(null);
+      setUpdating(false);
+    }, []);
+
+  /* ==========================================================
      REFRESH CART
   ========================================================== */
 
   const refreshCart =
     useCallback(async () => {
+      /*
+       * Never request the authenticated
+       * cart before Clerk is ready.
+       */
+
+      if (
+        !isLoaded
+      ) {
+        return;
+      }
+
+      /*
+       * Logged-out users must always
+       * have an empty server-cart view.
+       */
+
+      if (
+        !isSignedIn ||
+        !userId
+      ) {
+        resetLocalCart();
+        setLoading(false);
+        return;
+      }
+
+      const version =
+        ++requestVersion.current;
+
       try {
         setError(null);
 
@@ -423,12 +499,40 @@ export function CartProvider({
             "/api/cart"
           );
 
+        /*
+         * Ignore an old request if:
+         *
+         * - user logged out
+         * - another user logged in
+         * - another refresh started
+         */
+
+        if (
+          version !==
+          requestVersion.current
+        ) {
+          return;
+        }
+
         setCart(
           normalizeCart(data)
         );
       } catch (
         requestError
       ) {
+        /*
+         * If authentication changed while
+         * the request was running, do not
+         * display the old user's cart/error.
+         */
+
+        if (
+          version !==
+          requestVersion.current
+        ) {
+          return;
+        }
+
         const message =
           requestError instanceof
           Error
@@ -440,66 +544,177 @@ export function CartProvider({
           requestError
         );
 
+        /*
+         * Authentication failure means
+         * the client must not keep showing
+         * the previous user's cart.
+         */
+
+        if (
+          message.includes(
+            "401"
+          ) ||
+          message
+            .toLowerCase()
+            .includes(
+              "unauth"
+            )
+        ) {
+          resetLocalCart();
+          return;
+        }
+
         setError(message);
       } finally {
-        setLoading(false);
+        if (
+          version ===
+          requestVersion.current
+        ) {
+          setLoading(false);
+        }
       }
-    }, [api]);
+    }, [
+      api,
+      isLoaded,
+      isSignedIn,
+      userId,
+      resetLocalCart,
+    ]);
 
   /* ==========================================================
-     INITIAL CART LOAD
+     AUTHENTICATION / USER CHANGE
   ========================================================== */
 
   useEffect(() => {
+    /*
+     * Clerk has not finished loading yet.
+     */
+
+    if (!isLoaded) {
+      setLoading(true);
+      return;
+    }
+
+    /*
+     * IMPORTANT:
+     *
+     * When the user logs out:
+     *
+     * previous cart is immediately removed
+     * from React memory.
+     *
+     * This prevents:
+     *
+     * User A cart
+     *      ↓ logout
+     * User B / guest
+     *      ↓
+     * User A cart appearing temporarily
+     */
+
+    if (
+      !isSignedIn ||
+      !userId
+    ) {
+      resetLocalCart();
+      setLoading(false);
+      return;
+    }
+
+    /*
+     * New authenticated user.
+     *
+     * Clear previous user's cart BEFORE
+     * loading the new user's cart.
+     */
+
+    setCart(
+      EMPTY_CART
+    );
+
+    setError(null);
+    setLoading(true);
+
     let cancelled = false;
 
-    const loadCart =
+    const loadUserCart =
       async () => {
-        try {
-          setError(null);
+        const version =
+          ++requestVersion.current;
 
+        try {
           const data =
             await api.get<any>(
               "/api/cart"
             );
 
-          if (!cancelled) {
-            setCart(
-              normalizeCart(
-                data
-              )
-            );
+          if (
+            cancelled ||
+            version !==
+              requestVersion.current
+          ) {
+            return;
           }
+
+          setCart(
+            normalizeCart(data)
+          );
         } catch (
           requestError
         ) {
-          if (!cancelled) {
-            const message =
-              requestError instanceof
-              Error
-                ? requestError.message
-                : "Failed to load cart.";
-
-            console.error(
-              "Initial cart error:",
-              requestError
-            );
-
-            setError(message);
+          if (
+            cancelled ||
+            version !==
+              requestVersion.current
+          ) {
+            return;
           }
+
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to load cart.";
+
+          console.error(
+            "Authenticated cart load error:",
+            requestError
+          );
+
+          /*
+           * Do not expose stale cart data.
+           */
+
+          setCart(
+            EMPTY_CART
+          );
+
+          setError(
+            message
+          );
         } finally {
-          if (!cancelled) {
+          if (
+            !cancelled &&
+            version ===
+              requestVersion.current
+          ) {
             setLoading(false);
           }
         }
       };
 
-    loadCart();
+    loadUserCart();
 
     return () => {
       cancelled = true;
     };
-  }, [api]);
+  }, [
+    api,
+    isLoaded,
+    isSignedIn,
+    userId,
+    resetLocalCart,
+  ]);
 
   /* ==========================================================
      ADD TO CART
@@ -515,6 +730,18 @@ export function CartProvider({
         > = {},
         quantity = 1
       ): Promise<boolean> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          setError(
+            "Please sign in before adding items to your cart."
+          );
+
+          return false;
+        }
+
         try {
           setUpdating(true);
           setError(null);
@@ -576,16 +803,28 @@ export function CartProvider({
               cleanSelections,
           };
 
-          console.log(
-            "ADD TO CART REQUEST:",
-            payload
-          );
+          const version =
+            requestVersion.current;
 
           const data =
             await api.post<any>(
               "/api/cart/items",
               payload
             );
+
+          /*
+           * Do not allow a stale request to
+           * update another user's cart.
+           */
+
+          if (
+            version !==
+            requestVersion.current ||
+            !isSignedIn ||
+            !userId
+          ) {
+            return false;
+          }
 
           setCart(
             normalizeCart(data)
@@ -613,7 +852,12 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+      ]
     );
 
   /* ==========================================================
@@ -626,6 +870,18 @@ export function CartProvider({
         itemId: string,
         quantity: number
       ): Promise<boolean> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          setError(
+            "Please sign in to update your cart."
+          );
+
+          return false;
+        }
+
         if (
           !itemId ||
           !Number.isInteger(
@@ -640,6 +896,9 @@ export function CartProvider({
           setUpdating(true);
           setError(null);
 
+          const version =
+            requestVersion.current;
+
           const data =
             await api.patch<any>(
               `/api/cart/items/${encodeURIComponent(
@@ -649,6 +908,15 @@ export function CartProvider({
                 quantity,
               }
             );
+
+          if (
+            version !==
+              requestVersion.current ||
+            !isSignedIn ||
+            !userId
+          ) {
+            return false;
+          }
 
           setCart(
             normalizeCart(data)
@@ -671,12 +939,31 @@ export function CartProvider({
 
           setError(message);
 
+          /*
+           * Refresh after a failed mutation
+           * because the backend remains the
+           * source of truth.
+           */
+
+          if (
+            isSignedIn &&
+            userId
+          ) {
+            await refreshCart();
+          }
+
           return false;
         } finally {
           setUpdating(false);
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+        refreshCart,
+      ]
     );
 
   /* ==========================================================
@@ -688,12 +975,38 @@ export function CartProvider({
       async (
         itemId: string
       ): Promise<boolean> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          setError(
+            "Please sign in to modify your cart."
+          );
+
+          return false;
+        }
+
         if (!itemId) {
+          setError(
+            "Cart item ID is missing."
+          );
+
           return false;
         }
 
         try {
+          setUpdating(true);
           setError(null);
+
+          const version =
+            requestVersion.current;
+
+          /*
+           * DELETE must succeed on the server
+           * before treating the operation as
+           * successful.
+           */
 
           const data =
             await api.delete<any>(
@@ -702,23 +1015,86 @@ export function CartProvider({
               )}`
             );
 
+          if (
+            version !==
+              requestVersion.current ||
+            !isSignedIn ||
+            !userId
+          ) {
+            return false;
+          }
+
+          /*
+           * Backend response is the source
+           * of truth.
+           */
+
           setCart(
             normalizeCart(data)
           );
+
+          /*
+           * Extra protection:
+           *
+           * If the backend unexpectedly returns
+           * the deleted item, immediately reload
+           * the authenticated cart.
+           */
+
+          const normalized =
+            normalizeCart(data);
+
+          if (
+            normalized.items.some(
+              (item) =>
+                item._id ===
+                itemId
+            )
+          ) {
+            await refreshCart();
+          }
 
           return true;
         } catch (
           requestError
         ) {
+          const message =
+            requestError instanceof
+            Error
+              ? requestError.message
+              : "Failed to remove item.";
+
           console.error(
             "Remove cart item error:",
             requestError
           );
 
+          setError(message);
+
+          /*
+           * Re-sync from backend after a
+           * failed delete.
+           */
+
+          if (
+            isSignedIn &&
+            userId
+          ) {
+            await refreshCart();
+          }
+
           return false;
+        } finally {
+          setUpdating(false);
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+        refreshCart,
+      ]
     );
 
   /* ==========================================================
@@ -728,14 +1104,51 @@ export function CartProvider({
   const clearCart =
     useCallback(
       async (): Promise<boolean> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          /*
+           * Local cart is already empty when
+           * logged out.
+           */
+
+          resetLocalCart();
+          return true;
+        }
+
         try {
           setUpdating(true);
           setError(null);
+
+          const version =
+            requestVersion.current;
+
+          /*
+           * Optimistically clear the UI.
+           *
+           * If the server fails, refreshCart()
+           * restores the actual server state.
+           */
+
+          setCart(
+            EMPTY_CART
+          );
 
           const data =
             await api.delete<any>(
               "/api/cart"
             );
+
+          if (
+            version !==
+              requestVersion.current ||
+            !isSignedIn ||
+            !userId
+          ) {
+            return false;
+          }
 
           setCart(
             normalizeCart(data)
@@ -758,12 +1171,26 @@ export function CartProvider({
 
           setError(message);
 
+          if (
+            isSignedIn &&
+            userId
+          ) {
+            await refreshCart();
+          }
+
           return false;
         } finally {
           setUpdating(false);
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+        refreshCart,
+        resetLocalCart,
+      ]
     );
 
   /* ==========================================================
@@ -776,6 +1203,26 @@ export function CartProvider({
         itemId: string,
         printUnits: PrintUnit[]
       ): Promise<boolean> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          setError(
+            "Please sign in to save your customization."
+          );
+
+          return false;
+        }
+
+        if (!itemId) {
+          setError(
+            "Cart item ID is missing."
+          );
+
+          return false;
+        }
+
         try {
           setUpdating(true);
           setError(null);
@@ -834,6 +1281,9 @@ export function CartProvider({
                 )
               : [];
 
+          const version =
+            requestVersion.current;
+
           const data =
             await api.patch<any>(
               `/api/cart/items/${encodeURIComponent(
@@ -844,6 +1294,15 @@ export function CartProvider({
                   cleanedUnits,
               }
             );
+
+          if (
+            version !==
+              requestVersion.current ||
+            !isSignedIn ||
+            !userId
+          ) {
+            return false;
+          }
 
           setCart(
             normalizeCart(data)
@@ -871,7 +1330,12 @@ export function CartProvider({
           setUpdating(false);
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+      ]
     );
 
   /* ==========================================================
@@ -883,6 +1347,18 @@ export function CartProvider({
       async (
         file: File
       ): Promise<PrintImage | null> => {
+        if (
+          !isLoaded ||
+          !isSignedIn ||
+          !userId
+        ) {
+          setError(
+            "Please sign in before uploading a print image."
+          );
+
+          return null;
+        }
+
         try {
           setError(null);
 
@@ -967,7 +1443,12 @@ export function CartProvider({
           return null;
         }
       },
-      [api]
+      [
+        api,
+        isLoaded,
+        isSignedIn,
+        userId,
+      ]
     );
 
   /* ==========================================================
@@ -1054,4 +1535,3 @@ export function useCart() {
 
   return context;
 }
-

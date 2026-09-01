@@ -19,22 +19,23 @@ async function getAdminDashboardData(token) {
   };
 
   try {
-    const [categoriesRes, productsRes, orderStatsRes] = await Promise.all([
-      fetch(`${API_URL}/api/categories`, {
-        cache: "no-store",
-      }),
+    const [categoriesRes, productsRes, orderStatsRes] =
+      await Promise.all([
+        fetch(`${API_URL}/api/categories`, {
+          cache: "no-store",
+        }),
 
-      fetch(`${API_URL}/api/products`, {
-        cache: "no-store",
-      }),
+        fetch(`${API_URL}/api/products`, {
+          cache: "no-store",
+        }),
 
-      fetch(`${API_URL}/api/orders/admin/stats`, {
-        headers: {
-          Authorization: `Bearer ${token ?? ""}`,
-        },
-        cache: "no-store",
-      }),
-    ]);
+        fetch(`${API_URL}/api/orders/admin/stats`, {
+          headers: {
+            Authorization: `Bearer ${token || ""}`,
+          },
+          cache: "no-store",
+        }),
+      ]);
 
     const categoriesData = categoriesRes.ok
       ? await categoriesRes.json()
@@ -48,35 +49,43 @@ async function getAdminDashboardData(token) {
       ? await orderStatsRes.json()
       : null;
 
-    const categories = categoriesData.categories || [];
-    const products = productsData.products || [];
-    const stats = orderStatsData?.stats;
+    const categories = Array.isArray(categoriesData.categories)
+      ? categoriesData.categories
+      : [];
+
+    const products = Array.isArray(productsData.products)
+      ? productsData.products
+      : [];
+
+    const stats = orderStatsData?.stats || {};
 
     return {
       categories: categories.length,
+
       products: products.length,
 
       activeProducts: products.filter(
-        (p) => p.status === "active"
+        (product) => product.status === "active"
       ).length,
 
-      totalOrders: Number(stats?.totalOrders || 0),
-      totalRevenue: Number(stats?.totalRevenue || 0),
+      totalOrders: Number(stats.totalOrders || 0),
+
+      totalRevenue: Number(stats.totalRevenue || 0),
 
       confirmedOrders: Number(
-        stats?.orderStatus?.confirmed || 0
+        stats.orderStatus?.confirmed || 0
       ),
 
       shippedOrders: Number(
-        stats?.orderStatus?.shipped || 0
+        stats.orderStatus?.shipped || 0
       ),
 
       deliveredOrders: Number(
-        stats?.orderStatus?.delivered || 0
+        stats.orderStatus?.delivered || 0
       ),
 
       notCompletedOrders: Number(
-        stats?.orderStatus?.notCompleted || 0
+        stats.orderStatus?.notCompleted || 0
       ),
     };
   } catch (error) {
@@ -103,13 +112,14 @@ export default async function AdminPage() {
   }
 
   const token = await getToken();
+
   const data = await getAdminDashboardData(token);
 
   return (
-    <div className="space-y-6 sm:space-y-8 scroll-smooth">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <div>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#B9954F]">
+      <header>
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B9954F] sm:text-xs">
           Management Console
         </p>
 
@@ -117,14 +127,14 @@ export default async function AdminPage() {
           Admin Dashboard
         </h1>
 
-        <p className="mt-1 text-sm text-[#64748B]">
+        <p className="mt-1 text-sm leading-6 text-[#64748B]">
           Overview of sales, shipments, and catalog inventory.
         </p>
-      </div>
+      </header>
 
-      {/* Revenue & Order KPI Row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {/* Total Revenue */}
+      {/* KPI */}
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* Revenue */}
         <div className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
             Total Revenue
@@ -134,13 +144,13 @@ export default async function AdminPage() {
             ₹{data.totalRevenue.toLocaleString("en-IN")}
           </p>
 
-          <p className="mt-2 text-xs text-green-600 font-semibold">
+          <p className="mt-2 text-xs font-semibold text-green-600">
             From verified paid payments
           </p>
         </div>
 
-        {/* Ready to Ship */}
-        <div className="rounded-[14px] border border-blue-200 bg-blue-50/50 p-5 shadow-sm">
+        {/* Needs Shipping */}
+        <div className="rounded-[14px] border border-blue-200 bg-blue-50/60 p-5 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-wider text-blue-800">
             Needs Shipping
           </p>
@@ -151,25 +161,29 @@ export default async function AdminPage() {
 
           <Link
             href="/admin/orders?status=Confirmed"
-            className="mt-2 inline-block text-xs font-bold text-[#B9954F] hover:underline"
+            className="mt-2 inline-flex text-xs font-bold text-[#B9954F] hover:underline"
           >
             Process shipments →
           </Link>
         </div>
 
-        {/* In Transit */}
+        {/* Shipped */}
         <div className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-            In Transit (India Post)
+            In Transit
           </p>
 
           <p className="mt-2 text-3xl font-extrabold text-[#0A1B2E]">
             {data.shippedOrders}
           </p>
 
+          <p className="mt-1 text-xs text-[#64748B]">
+            India Post shipments
+          </p>
+
           <Link
             href="/admin/orders?status=Shipped"
-            className="mt-2 inline-block text-xs font-bold text-[#B9954F] hover:underline"
+            className="mt-2 inline-flex text-xs font-bold text-[#B9954F] hover:underline"
           >
             Track shipments →
           </Link>
@@ -189,15 +203,15 @@ export default async function AdminPage() {
             Completed fulfillments
           </p>
         </div>
-      </div>
+      </section>
 
-      {/* Catalog & Inventory Section */}
-      <div>
+      {/* Catalog */}
+      <section>
         <h2 className="mb-4 text-lg font-extrabold text-[#0A1B2E]">
           Catalog Overview
         </h2>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {/* Products */}
           <div className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
@@ -214,7 +228,7 @@ export default async function AdminPage() {
 
             <Link
               href="/admin/products"
-              className="mt-4 inline-flex items-center text-xs font-bold text-[#B9954F] hover:underline"
+              className="mt-4 inline-flex text-xs font-bold text-[#B9954F] hover:underline"
             >
               Manage products →
             </Link>
@@ -236,7 +250,7 @@ export default async function AdminPage() {
 
             <Link
               href="/admin/categories"
-              className="mt-4 inline-flex items-center text-xs font-bold text-[#B9954F] hover:underline"
+              className="mt-4 inline-flex text-xs font-bold text-[#B9954F] hover:underline"
             >
               Manage categories →
             </Link>
@@ -258,13 +272,13 @@ export default async function AdminPage() {
 
             <Link
               href="/admin/orders"
-              className="mt-4 inline-flex items-center text-xs font-bold text-[#B9954F] hover:underline"
+              className="mt-4 inline-flex text-xs font-bold text-[#B9954F] hover:underline"
             >
               View order log →
             </Link>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
