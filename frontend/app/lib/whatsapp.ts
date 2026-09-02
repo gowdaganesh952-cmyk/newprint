@@ -239,3 +239,4 @@ export function buildWhatsAppUrl(
 
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 }
+
