@@ -85,7 +85,6 @@ export default async function OrdersPage() {
 
   return (
     <div className="min-w-0 w-full space-y-5 sm:space-y-6 scroll-smooth">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-extrabold tracking-tight text-[#0A1B2E] sm:text-2xl">
@@ -119,7 +118,6 @@ export default async function OrdersPage() {
         </Link>
       </div>
 
-      {/* No confirmed orders */}
       {orders.length === 0 ? (
         <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-7 text-center shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-12">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#F7F7F5]">
@@ -222,7 +220,7 @@ export default async function OrdersPage() {
                     </span>
                   </div>
 
-                  <div className="flex min-w-0 items-center justify-between gap-3 border-t border-[#E5E7EB] pt-4">
+                  <div className="flex min-w-0 flex-col gap-3 border-t border-[#E5E7EB] pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="text-xs text-[#64748B]">
                         {itemCount}{" "}
@@ -238,12 +236,12 @@ export default async function OrdersPage() {
                     <Link
                       href={`/dashboard/orders/${order._id}`}
                       className="
-                        inline-flex min-h-[44px]
+                        inline-flex min-h-[44px] w-full
                         shrink-0 items-center justify-center
                         rounded-[10px]
                         bg-[#0A1B2E]
-                        px-4
-                        text-sm font-semibold text-white
+                        px-5
+                        text-sm font-semibold text-white whitespace-nowrap
                         transition-all duration-200
                         hover:bg-[#142C46]
                         active:scale-[0.97]
@@ -252,6 +250,7 @@ export default async function OrdersPage() {
                         focus-visible:ring-2
                         focus-visible:ring-[#B9954F]
                         focus-visible:ring-offset-2
+                        sm:w-auto
                       "
                     >
                       View Order

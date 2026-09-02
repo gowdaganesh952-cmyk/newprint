@@ -132,11 +132,6 @@ export default async function OrderDetailsPage({
 
   return (
     <div className="min-w-0 space-y-5 overflow-x-hidden pb-8 scroll-smooth sm:space-y-6">
-
-      {/* ============================================================
-          HEADER
-      ============================================================ */}
-
       <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#B9954F]">
@@ -148,13 +143,10 @@ export default async function OrderDetailsPage({
           </h1>
         </div>
 
-        {/* HEADER ACTIONS */}
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-
-          {/* TRACK ORDER */}
           <Link
             href={`/dashboard/orders/${id}/track`}
-            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
+            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
           >
             <svg
               className="h-4 w-4 shrink-0"
@@ -179,19 +171,14 @@ export default async function OrderDetailsPage({
             Track Order
           </Link>
 
-          {/* BACK TO ORDERS */}
           <Link
             href="/dashboard/orders"
-            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
+            className="inline-flex min-h-[44px] w-full shrink-0 items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:w-auto"
           >
             ← Orders
           </Link>
         </div>
       </header>
-
-      {/* ============================================================
-          PAYMENT / ORDER CONFIRMATION
-      ============================================================ */}
 
       {paymentCompleted ? (
         <section className="overflow-hidden rounded-[14px] border border-green-200 bg-white shadow-[0_2px_16px_-8px_rgba(10,27,46,0.25)]">
@@ -271,18 +258,8 @@ export default async function OrderDetailsPage({
         </section>
       )}
 
-      {/* ============================================================
-          MAIN CONTENT
-      ============================================================ */}
-
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6">
-
-        {/* ==========================================================
-            PRODUCTS
-        ========================================================== */}
-
         <section className="min-w-0 overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)]">
-
           <div className="border-b border-[#E5E7EB] bg-[#F7F7F5] px-4 py-4 sm:px-5">
             <h3 className="font-bold text-[#0A1B2E]">
               Products
@@ -290,7 +267,6 @@ export default async function OrderDetailsPage({
           </div>
 
           <div className="divide-y divide-[#E5E7EB]">
-
             {order.items && order.items.length > 0 ? (
               order.items.map((item, index) => (
                 <div
@@ -301,9 +277,6 @@ export default async function OrderDetailsPage({
                   className="p-4 sm:p-5"
                 >
                   <div className="flex min-w-0 gap-3 sm:gap-4">
-
-                    {/* PRODUCT IMAGE */}
-
                     {item.image ? (
                       <img
                         src={item.image}
@@ -322,10 +295,7 @@ export default async function OrderDetailsPage({
                       </div>
                     )}
 
-                    {/* PRODUCT INFORMATION */}
-
                     <div className="min-w-0 flex-1">
-
                       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                         <h4 className="break-words text-sm font-bold leading-5 text-[#0A1B2E] sm:text-base">
                           {item.name}
@@ -358,7 +328,6 @@ export default async function OrderDetailsPage({
                             ))}
                           </div>
                         )}
-
                     </div>
                   </div>
                 </div>
@@ -368,26 +337,16 @@ export default async function OrderDetailsPage({
                 No product information available.
               </div>
             )}
-
           </div>
         </section>
 
-        {/* ==========================================================
-            RIGHT SIDE
-        ========================================================== */}
-
         <div className="min-w-0 space-y-5">
-
-          {/* SUMMARY */}
-
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
-
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Summary
             </h3>
 
             <div className="space-y-3 text-sm">
-
               <div className="flex items-center justify-between gap-4 text-[#64748B]">
                 <span>Subtotal</span>
 
@@ -405,7 +364,6 @@ export default async function OrderDetailsPage({
               </div>
 
               <div className="flex items-center justify-between gap-4 border-t border-[#E5E7EB] pt-3">
-
                 <span className="font-bold text-[#0A1B2E]">
                   Total
                 </span>
@@ -413,21 +371,16 @@ export default async function OrderDetailsPage({
                 <span className="text-lg font-extrabold text-[#0A1B2E]">
                   {formatCurrency(order.totalAmount)}
                 </span>
-
               </div>
             </div>
           </section>
 
-          {/* ORDER STATUS */}
-
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
-
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Order Status
             </h3>
 
             <div className="space-y-4 text-sm">
-
               <div>
                 <p className="text-[#64748B]">
                   Order Date
@@ -450,7 +403,6 @@ export default async function OrderDetailsPage({
                 </p>
 
                 <div className="mt-1">
-
                   {paymentCompleted ? (
                     <span className="inline-flex rounded-full border border-green-100 bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
                       Paid
@@ -460,7 +412,6 @@ export default async function OrderDetailsPage({
                       Payment Pending
                     </span>
                   )}
-
                 </div>
               </div>
 
@@ -476,8 +427,6 @@ export default async function OrderDetailsPage({
                 </p>
               </div>
 
-              {/* CURRENT STATUS */}
-
               <div>
                 <p className="text-[#64748B]">
                   Status
@@ -487,20 +436,15 @@ export default async function OrderDetailsPage({
                   {order.status || "Not Completed"}
                 </p>
               </div>
-
             </div>
           </section>
 
-          {/* SHIPPING ADDRESS */}
-
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
-
             <h3 className="mb-4 font-bold text-[#0A1B2E]">
               Shipping Address
             </h3>
 
             <div className="space-y-1 break-words text-sm leading-6 text-[#0A1B2E]">
-
               {order.shippingAddress?.fullName && (
                 <p className="font-semibold">
                   {order.shippingAddress.fullName}
@@ -544,23 +488,15 @@ export default async function OrderDetailsPage({
                   Landmark: {order.shippingAddress.landmark}
                 </p>
               )}
-
             </div>
           </section>
         </div>
       </div>
 
-      {/* ============================================================
-          BOTTOM ACTIONS
-      ============================================================ */}
-
       <div className="flex flex-col gap-3 pt-1 sm:flex-row">
-
-        {/* TRACK ORDER */}
-
         <Link
           href={`/dashboard/orders/${id}/track`}
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
         >
           <svg
             className="h-4 w-4"
@@ -585,24 +521,19 @@ export default async function OrderDetailsPage({
           Track Order
         </Link>
 
-        {/* BACK TO ORDERS */}
-
         <Link
           href="/dashboard/orders"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap shadow-sm transition-all duration-200 hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
         >
           ← Back to Orders
         </Link>
 
-        {/* CONTINUE SHOPPING */}
-
         <Link
           href="/"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:ml-auto"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-5 text-sm font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-200 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 sm:ml-auto"
         >
           Continue Shopping
         </Link>
-
       </div>
     </div>
   );

@@ -215,7 +215,7 @@ export default function AddressModal({
 
             <div>
               <label htmlFor="addressLine2" className="mb-1.5 block text-sm font-semibold text-[#0A1B2E]">
-                Address Line 2 <span className="font-normal text-[#94A3B8]"> (Optional)</span>
+                Address Line 2 <span className="font-normal text-[#94A3B8]">(Optional)</span>
               </label>
               <input
                 id="addressLine2"
@@ -283,7 +283,7 @@ export default function AddressModal({
 
               <div>
                 <label htmlFor="landmark" className="mb-1.5 block text-sm font-semibold text-[#0A1B2E]">
-                  Landmark <span className="font-normal text-[#94A3B8]"> (Optional)</span>
+                  Landmark <span className="font-normal text-[#94A3B8]">(Optional)</span>
                 </label>
                 <input
                   id="landmark"

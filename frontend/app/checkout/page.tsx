@@ -18,7 +18,7 @@ import {
 } from "@/app/components/cart/CartProvider";
 
 /* ============================================================
-   CONFIG
+    CONFIG
 ============================================================ */
 
 const API_URL =
@@ -31,7 +31,7 @@ const RAZORPAY_SCRIPT =
 const MAX_PRINT_IMAGES = 6;
 
 /* ============================================================
-   TYPES
+    TYPES
 ============================================================ */
 
 interface Address {
@@ -88,7 +88,7 @@ declare global {
 }
 
 /* ============================================================
-   HELPERS
+    HELPERS
 ============================================================ */
 
 function formatPrice(value: number) {
@@ -96,7 +96,7 @@ function formatPrice(value: number) {
 }
 
 /* ============================================================
-   RAZORPAY SCRIPT LOADER
+    RAZORPAY SCRIPT LOADER
 ============================================================ */
 
 let razorpayPromise: Promise<boolean> | null = null;
@@ -158,7 +158,7 @@ function loadRazorpay(): Promise<boolean> {
 }
 
 /* ============================================================
-   ICONS
+    ICONS
 ============================================================ */
 
 function ArrowLeftIcon({ size = 17 }: { size?: number }) {
@@ -315,7 +315,7 @@ function AlertIcon() {
 }
 
 /* ============================================================
-   SPINNER
+    SPINNER
 ============================================================ */
 
 function Spinner() {
@@ -325,7 +325,7 @@ function Spinner() {
 }
 
 /* ============================================================
-   SKELETON
+    SKELETON
 ============================================================ */
 
 function CheckoutSkeleton() {
@@ -353,7 +353,7 @@ function CheckoutSkeleton() {
 }
 
 /* ============================================================
-   ADDRESS CARD
+    ADDRESS CARD
 ============================================================ */
 
 function AddressCard({
@@ -453,7 +453,7 @@ function AddressCard({
 }
 
 /* ============================================================
-   PRINT IMAGE STRIP
+    PRINT IMAGE STRIP
 ============================================================ */
 
 function PrintImages({ units }: { units: PrintUnit[] }) {
@@ -528,7 +528,7 @@ function PrintImages({ units }: { units: PrintUnit[] }) {
 }
 
 /* ============================================================
-   CHECKOUT PAGE
+    CHECKOUT PAGE
 ============================================================ */
 
 export default function CheckoutPage() {
@@ -542,6 +542,14 @@ export default function CheckoutPage() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Stable checkout session ID for idempotency matching backend controller[cite: 1]
+  const [checkoutSessionId] = useState(() => {
+    if (typeof window !== "undefined" && window.crypto?.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  });
 
   const selectedAddress = useMemo(
     () => addresses.find((address) => address._id === selectedAddressId) || null,
@@ -711,6 +719,7 @@ export default function CheckoutPage() {
         },
         body: JSON.stringify({
           addressId: selectedAddressId,
+          checkoutSessionId, // Sending session ID for backend idempotency[cite: 1]
         }),
       });
 
@@ -767,6 +776,7 @@ export default function CheckoutPage() {
     items.length,
     isPrintReady,
     selectedAddressId,
+    checkoutSessionId,
     getToken,
     selectedAddress,
     verifyPayment,

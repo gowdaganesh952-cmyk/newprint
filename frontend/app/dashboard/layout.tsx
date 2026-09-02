@@ -4,19 +4,11 @@ import Link from "next/link";
 import AccountSidebar from "../components/account/AccountSidebar";
 
 export default async function DashboardLayout({ children }) {
-  // ============================================================
-  // AUTHENTICATION
-  // ============================================================
-
   const { isAuthenticated, userId } = await auth();
 
   if (!isAuthenticated || !userId) {
     redirect("/sign-in");
   }
-
-  // ============================================================
-  // USER
-  // ============================================================
 
   const user = await currentUser();
 
@@ -26,22 +18,13 @@ export default async function DashboardLayout({ children }) {
 
   const role = user.publicMetadata?.role;
 
-  // ============================================================
-  // ADMIN CANNOT ENTER USER DASHBOARD
-  // ============================================================
-
   if (role === "admin") {
     redirect("/admin");
   }
 
-  // ============================================================
-  // LAYOUT
-  // ============================================================
-
   return (
     <div className="min-h-[100dvh] w-full overflow-x-hidden bg-[#F7F7F5] text-[#0A1B2E]">
       <div className="mx-auto w-full max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:py-8">
-        {/* Header */}
         <header className="mb-5 sm:mb-7">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
@@ -65,16 +48,13 @@ export default async function DashboardLayout({ children }) {
           </div>
         </header>
 
-        {/* Dashboard */}
         <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-7">
-          {/* Navigation */}
           <aside className="min-w-0 lg:sticky lg:top-5 lg:h-fit">
             <div className="w-full overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white p-2 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-2.5 lg:p-3">
               <AccountSidebar />
             </div>
           </aside>
 
-          {/* Page content */}
           <main className="min-w-0 w-full pb-8 sm:pb-10">
             {children}
           </main>

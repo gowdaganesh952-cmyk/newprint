@@ -6,7 +6,6 @@ import { UserProfile } from "@clerk/nextjs";
 export default function ProfilePage() {
   return (
     <div className="min-w-0 w-full space-y-5 sm:space-y-6 scroll-smooth">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3 sm:gap-4">
         <div className="min-w-0">
           <h2 className="truncate text-xl font-extrabold tracking-tight text-[#0A1B2E] sm:text-2xl">
@@ -41,7 +40,6 @@ export default function ProfilePage() {
         </Link>
       </div>
 
-      {/* Clerk Profile */}
       <section className="w-full min-w-0 overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)]">
         <div className="w-full min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <div className="flex min-w-0 justify-center">

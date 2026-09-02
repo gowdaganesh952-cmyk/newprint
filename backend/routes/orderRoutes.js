@@ -14,7 +14,7 @@ import {
   getAdminOrders,
   getAdminOrderStats,
   getAdminOrderById,
-  updateOrderStatusAdmin
+  updateOrderStatusAdmin,
 } from "../controllers/orderController.js";
 
 const router = express.Router();
@@ -24,8 +24,15 @@ const router = express.Router();
 ============================================================ */
 
 /*
- * Every order endpoint requires
+ * Every order-related endpoint requires
  * an authenticated Clerk user.
+ *
+ * This protects:
+ * - customer orders
+ * - payment creation
+ * - payment verification
+ * - order statistics
+ * - admin routes
  */
 router.use(authenticateUser);
 
@@ -33,22 +40,50 @@ router.use(authenticateUser);
    ADMIN ROUTES
 ============================================================ */
 
-// Must be placed before /:id routes to avoid parameter mismatch
-router.get("/admin/stats", requireAdmin, getAdminOrderStats);
-router.get("/admin", requireAdmin, getAdminOrders);
-router.get("/admin/:id", requireAdmin, getAdminOrderById);
-router.patch("/admin/:id/status", requireAdmin, updateOrderStatusAdmin);
+/*
+ * IMPORTANT:
+ * These routes must stay ABOVE /:id.
+ *
+ * Admin access is protected by requireAdmin.
+ */
 
+/* GET /api/orders/admin/stats */
+router.get(
+  "/admin/stats",
+  requireAdmin,
+  getAdminOrderStats
+);
+
+/* GET /api/orders/admin */
+router.get(
+  "/admin",
+  requireAdmin,
+  getAdminOrders
+);
+
+/* GET /api/orders/admin/:id */
+router.get(
+  "/admin/:id",
+  requireAdmin,
+  getAdminOrderById
+);
+
+/* PATCH /api/orders/admin/:id/status */
+router.patch(
+  "/admin/:id/status",
+  requireAdmin,
+  updateOrderStatusAdmin
+);
 
 /* ============================================================
-   CUSTOMER: ORDER STATS
+   CUSTOMER ORDER STATS
 ============================================================ */
 
 /*
  * GET /api/orders/stats
  *
  * IMPORTANT:
- * This must stay BEFORE /:id.
+ * Keep this BEFORE /:id.
  */
 router.get(
   "/stats",
@@ -56,22 +91,24 @@ router.get(
 );
 
 /* ============================================================
-   CREATE PAYMENT
+   CREATE RAZORPAY PAYMENT ORDER
 ============================================================ */
 
 /*
  * POST /api/orders/create-payment
  *
- * Backend calculates:
- * - cart items
- * - quantities
- * - print units
- * - prices
- * - subtotal
- * - delivery
- * - total
+ * The backend must calculate:
  *
- * The frontend must NOT send the amount.
+ * - cart contents
+ * - product prices
+ * - quantities
+ * - selections
+ * - print units
+ * - subtotal
+ * - delivery fee
+ * - final amount
+ *
+ * NEVER trust an amount sent by the frontend.
  */
 router.post(
   "/create-payment",
@@ -79,14 +116,20 @@ router.post(
 );
 
 /* ============================================================
-   VERIFY PAYMENT
+   VERIFY RAZORPAY PAYMENT
 ============================================================ */
 
 /*
  * POST /api/orders/verify-payment
  *
- * Successful payment = Confirmed
- * Failure/Cancellation updates paymentStatus, retains Not Completed.
+ * Backend must verify the Razorpay signature.
+ *
+ * Only after successful server-side verification:
+ *
+ * paymentStatus -> Paid
+ * status        -> Confirmed
+ *
+ * Failed/cancelled payments must NOT become confirmed orders.
  */
 router.post(
   "/verify-payment",
@@ -94,12 +137,14 @@ router.post(
 );
 
 /* ============================================================
-   GET ALL USER ORDERS
+   CUSTOMER ORDERS
 ============================================================ */
 
 /*
  * GET /api/orders
- * Returns the authenticated user's orders only.
+ *
+ * Controller must return ONLY orders belonging
+ * to the authenticated Clerk user.
  */
 router.get(
   "/",
@@ -107,18 +152,29 @@ router.get(
 );
 
 /* ============================================================
-   GET SINGLE USER ORDER
+   CUSTOMER SINGLE ORDER
 ============================================================ */
 
 /*
  * GET /api/orders/:id
  *
+ * Controller MUST verify:
+ *
+ * order._id + authenticated userId
+ *
+ * so one customer cannot access another customer's order.
+ *
  * IMPORTANT:
- * getOrderById always queries using userId validation.
+ * This route must remain LAST because /:id
+ * catches any unmatched path.
  */
 router.get(
   "/:id",
   getOrderById
 );
+
+/* ============================================================
+   EXPORT
+============================================================ */
 
 export default router;

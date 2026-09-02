@@ -150,7 +150,6 @@ export default function AddressesPage() {
 
   return (
     <div className="min-w-0 space-y-5 sm:space-y-6 scroll-smooth">
-      {/* Header */}
       <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-xl font-extrabold tracking-[-0.02em] text-[#0A1B2E] sm:text-2xl">
@@ -164,14 +163,13 @@ export default function AddressesPage() {
         <button
           type="button"
           onClick={handleOpenAddModal}
-          className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white shadow-sm transition-all duration-150 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
+          className="inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white whitespace-nowrap shadow-sm transition-all duration-150 hover:bg-[#142C46] active:scale-[0.98] touch-manipulation will-change-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2"
         >
           <span className="hidden sm:inline">+ Add New Address</span>
           <span className="sm:hidden">+ Add</span>
         </button>
       </div>
 
-      {/* Loading */}
       {isLoading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {[1, 2].map((item) => (
@@ -182,7 +180,6 @@ export default function AddressesPage() {
           ))}
         </div>
       ) : addresses.length === 0 ? (
-        /* Empty */
         <div className="rounded-[14px] border border-[#E5E7EB] bg-white p-8 text-center shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-12">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#F7F7F5] text-[#64748B]">
             +
@@ -194,13 +191,12 @@ export default function AddressesPage() {
           <button
             type="button"
             onClick={handleOpenAddModal}
-            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-6 text-sm font-semibold text-white transition-all hover:bg-[#142C46] active:scale-[0.98] touch-manipulation will-change-transform"
+            className="mt-6 inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-6 text-sm font-semibold text-white whitespace-nowrap transition-all hover:bg-[#142C46] active:scale-[0.98] touch-manipulation will-change-transform"
           >
             Add New Address
           </button>
         </div>
       ) : (
-        /* Addresses */
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {addresses.map((address) => (
             <article
@@ -239,7 +235,7 @@ export default function AddressesPage() {
                     type="button"
                     disabled={actionId === address._id}
                     onClick={() => handleSetDefault(address._id)}
-                    className="inline-flex min-h-[42px] items-center justify-center rounded-[9px] border border-[#E5E7EB] px-4 text-sm font-semibold text-[#0A1B2E] transition-all hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation will-change-transform active:scale-[0.98]"
+                    className="inline-flex min-h-[42px] items-center justify-center rounded-[9px] border border-[#E5E7EB] px-4 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap transition-all hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation will-change-transform active:scale-[0.98]"
                   >
                     {actionId === address._id ? "Updating..." : "Set as Default"}
                   </button>
@@ -249,7 +245,7 @@ export default function AddressesPage() {
                   <button
                     type="button"
                     onClick={() => handleOpenEditModal(address)}
-                    className="min-h-[42px] rounded-[9px] border border-[#E5E7EB] px-3 text-sm font-semibold text-[#0A1B2E] transition-all hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform"
+                    className="min-h-[42px] rounded-[9px] border border-[#E5E7EB] px-3 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap transition-all hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform"
                   >
                     Edit
                   </button>
@@ -258,7 +254,7 @@ export default function AddressesPage() {
                     type="button"
                     disabled={actionId === address._id}
                     onClick={() => handleDeleteAddress(address._id)}
-                    className="min-h-[42px] rounded-[9px] border border-red-100 px-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation will-change-transform"
+                    className="min-h-[42px] rounded-[9px] border border-red-100 px-3 text-sm font-semibold text-red-600 whitespace-nowrap transition-all hover:bg-red-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation will-change-transform"
                   >
                     {actionId === address._id ? "Deleting..." : "Delete"}
                   </button>
@@ -272,7 +268,7 @@ export default function AddressesPage() {
       <div>
         <Link
           href="/"
-          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] transition-all hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform"
+          className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-5 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap transition-all hover:border-[#B9954F]/50 hover:bg-[#F7F7F5] active:scale-[0.98] touch-manipulation will-change-transform"
         >
           ← Continue Shopping
         </Link>

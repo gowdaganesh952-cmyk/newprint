@@ -35,6 +35,7 @@ export default function AccountSidebar() {
             <Link
               key={link.href}
               href={link.href}
+              prefetch={true}
               className={[
                 "inline-flex min-h-[42px] shrink-0 items-center justify-center",
                 "rounded-[10px] px-3.5 py-2.5 text-sm font-semibold",

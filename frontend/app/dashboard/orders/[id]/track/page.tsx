@@ -1,11 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import CopyButton from "../../../../components/CopyButton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
-// --- Types ---
 interface OrderItem {
   _id?: string;
   name: string;
@@ -44,7 +42,6 @@ interface Order {
   };
 }
 
-// --- Formatters ---
 const formatCurrency = (amount: number, currency: string = "INR") => {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -61,7 +58,6 @@ const formatDate = (dateString?: string) => {
   });
 };
 
-// --- API Fetch ---
 async function fetchOrder(id: string, token: string | null): Promise<Order | null> {
   try {
     const res = await fetch(`${API_URL}/api/orders/${id}`, {
@@ -86,7 +82,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
     notFound();
   }
 
-  // --- Status Logic ---
   const isCancelled = order.status === "Cancelled";
   const isNotCompleted = order.status === "Not Completed";
   
@@ -95,8 +90,7 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
   const stepDelivered = stepConfirmed && order.status === "Delivered";
 
   return (
-    <div className="min-w-0 space-y-6 overflow-x-hidden pb-8 sm:space-y-8">
-      {/* Header */}
+    <div className="min-w-0 space-y-6 overflow-x-hidden pb-8 sm:space-y-8 scroll-smooth">
       <header className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#B9954F]">Track Order</p>
@@ -108,20 +102,19 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
         <div className="flex gap-3">
           <Link
             href={`/dashboard/orders/${id}`}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] shadow-sm transition-colors hover:bg-[#F7F7F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F]"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] border border-[#E5E7EB] bg-white px-4 text-sm font-semibold text-[#0A1B2E] whitespace-nowrap shadow-sm transition-colors hover:bg-[#F7F7F5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F]"
           >
             Order Details
           </Link>
           <Link
             href="/dashboard/orders"
-            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#142C46] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F]"
+            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-[#0A1B2E] px-4 text-sm font-semibold text-white whitespace-nowrap shadow-sm transition-colors hover:bg-[#142C46] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F]"
           >
             All Orders
           </Link>
         </div>
       </header>
 
-      {/* Main Tracking Card */}
       <section className="overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)]">
         <div className="border-b border-[#E5E7EB] bg-[#F7F7F5] px-5 py-4">
           <h2 className="font-bold text-[#0A1B2E]">Tracking Status</h2>
@@ -140,11 +133,9 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
             </div>
           ) : (
             <div className="relative">
-              {/* Timeline Line */}
               <div className="absolute left-[15px] top-4 bottom-4 w-[2px] bg-[#E5E7EB]" aria-hidden="true" />
               
               <ul className="relative space-y-8">
-                {/* Step 1: Confirmed */}
                 <li className="relative pl-10">
                   <span className={`absolute left-0 top-0.5 flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-white ${stepConfirmed ? 'bg-[#0A1B2E] text-white' : 'bg-[#E5E7EB] text-transparent'}`}>
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
@@ -153,7 +144,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                   <p className="mt-1 text-sm text-[#64748B]">Your order has been confirmed and is being prepared.</p>
                 </li>
 
-                {/* Step 2: Shipped */}
                 <li className="relative pl-10">
                   <span className={`absolute left-0 top-0.5 flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-white ${stepShipped ? 'bg-[#0A1B2E] text-white' : 'bg-[#E5E7EB] text-transparent'}`}>
                     {stepShipped ? (
@@ -170,7 +160,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                         Your order was handed over for delivery {order.shippedAt ? `on ${formatDate(order.shippedAt)}` : "and is on its way"}.
                       </p>
                       
-                      {/* Carrier Card */}
                       {order.consignmentNumber && (
                         <div className="rounded-[10px] border border-[#E5E7EB] bg-[#F7F7F5] p-4">
                           <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">Shipping Provider</p>
@@ -181,7 +170,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                               <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">Consignment Number</p>
                               <p className="break-all font-mono text-lg font-bold text-[#0A1B2E]">{order.consignmentNumber}</p>
                             </div>
-                            <CopyButton text={order.consignmentNumber} />
                           </div>
 
                           <div className="mt-4 border-t border-[#E5E7EB] pt-4">
@@ -191,7 +179,7 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                                 href={order.trackingUrl} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="inline-flex w-full sm:w-auto items-center justify-center rounded-md bg-[#0A1B2E] px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#142C46] focus:outline-none focus:ring-2 focus:ring-[#B9954F]"
+                                className="inline-flex w-full sm:w-auto items-center justify-center rounded-md bg-[#0A1B2E] px-4 py-2.5 text-sm font-semibold text-white whitespace-nowrap shadow-sm hover:bg-[#142C46] focus:outline-none focus:ring-2 focus:ring-[#B9954F]"
                               >
                                 Track on {order.shippingProvider || "India Post"}
                                 <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
@@ -201,7 +189,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                         </div>
                       )}
 
-                      {/* Shipping Notes */}
                       {order.shippingNotes && (
                         <div className="rounded-md bg-blue-50 border border-blue-100 p-3">
                           <p className="text-xs font-bold uppercase text-blue-900 mb-1">Shipping Update</p>
@@ -214,7 +201,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
                   )}
                 </li>
 
-                {/* Step 3: Delivered */}
                 <li className="relative pl-10">
                   <span className={`absolute left-0 top-0.5 flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-white ${stepDelivered ? 'bg-[#0A1B2E] text-white' : 'bg-[#E5E7EB] text-transparent'}`}>
                     {stepDelivered ? (
@@ -236,10 +222,7 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
         </div>
       </section>
 
-      {/* Grid for Items and Summary */}
       <div className="grid min-w-0 grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6">
-        
-        {/* Products */}
         <section className="min-w-0 overflow-hidden rounded-[14px] border border-[#E5E7EB] bg-white shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)]">
           <div className="border-b border-[#E5E7EB] bg-[#F7F7F5] px-4 py-4 sm:px-5">
             <h3 className="font-bold text-[#0A1B2E]">Ordered Items</h3>
@@ -271,9 +254,7 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
           </div>
         </section>
 
-        {/* Right Side Stack */}
         <div className="min-w-0 space-y-5 lg:space-y-6">
-          {/* Shipping Address */}
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
             <h3 className="mb-4 font-bold text-[#0A1B2E]">Shipping Address</h3>
             <div className="space-y-1 text-sm text-[#0A1B2E]">
@@ -286,7 +267,6 @@ export default async function OrderTrackingPage({ params }: { params: Promise<{ 
             </div>
           </section>
 
-          {/* Order Summary */}
           <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-5 shadow-[0_2px_12px_-8px_rgba(10,27,46,0.25)] sm:p-6">
             <h3 className="mb-4 font-bold text-[#0A1B2E]">Order Summary</h3>
             <div className="space-y-3 text-sm">

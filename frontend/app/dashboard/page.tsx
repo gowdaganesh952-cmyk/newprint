@@ -4,17 +4,9 @@ import { redirect } from "next/navigation";
 export default async function DashboardPage() {
   const { isAuthenticated, userId } = await auth();
 
-  // ------------------------------------------------------------
-  // NOT AUTHENTICATED
-  // ------------------------------------------------------------
-
   if (!isAuthenticated || !userId) {
     redirect("/sign-in");
   }
-
-  // ------------------------------------------------------------
-  // GET CURRENT USER
-  // ------------------------------------------------------------
 
   const user = await currentUser();
 
@@ -24,35 +16,13 @@ export default async function DashboardPage() {
 
   const role = user.publicMetadata?.role;
 
-  // ------------------------------------------------------------
-  // ADMIN
-  //
-  // Admin role is manually assigned in Clerk.
-  // Never overwrite it here.
-  // ------------------------------------------------------------
-
   if (role === "admin") {
     redirect("/admin");
   }
 
-  // ------------------------------------------------------------
-  // NORMAL USER
-  // ------------------------------------------------------------
-
   if (role === "user") {
-    return (
-      <UserDashboardHome user={user} />
-    );
+    return <UserDashboardHome user={user} />;
   }
-
-  // ------------------------------------------------------------
-  // FIRST LOGIN
-  //
-  // No role exists.
-  //
-  // Assign user role from the server.
-  // publicMetadata cannot safely be assigned from the browser.
-  // ------------------------------------------------------------
 
   try {
     const client = await clerkClient();
@@ -64,10 +34,6 @@ export default async function DashboardPage() {
     });
   } catch (error) {
     console.error("Failed to assign default user role:", error);
-
-    // Do not expose Clerk/backend details to the user.
-    // Keep them authenticated but stop here rather than
-    // accidentally treating them as admin.
     return (
       <main className="flex min-h-[60vh] items-center justify-center px-4">
         <div className="w-full max-w-md rounded-[14px] border border-[#E5E7EB] bg-white p-6 text-center shadow-sm">
@@ -84,19 +50,8 @@ export default async function DashboardPage() {
     );
   }
 
-  // ------------------------------------------------------------
-  // FIRST LOGIN IS NOW A USER
-  // ------------------------------------------------------------
-
-  return (
-    <UserDashboardHome user={user} />
-  );
+  return <UserDashboardHome user={user} />;
 }
-
-
-// ============================================================
-// USER DASHBOARD HOME
-// ============================================================
 
 function UserDashboardHome({ user }) {
   const firstName =
@@ -107,7 +62,6 @@ function UserDashboardHome({ user }) {
 
   return (
     <div className="space-y-5 sm:space-y-7">
-      {/* Welcome */}
       <section>
         <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-[#B9954F] sm:text-xs">
           My Account
@@ -122,7 +76,6 @@ function UserDashboardHome({ user }) {
         </p>
       </section>
 
-      {/* Quick Actions */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <a
           href="/dashboard/orders"
