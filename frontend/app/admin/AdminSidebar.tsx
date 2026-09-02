@@ -1,3 +1,4 @@
+// path: frontend/components/admin/AdminSidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -28,6 +29,7 @@ const navGroups = [
     title: "Sales",
     items: [
       { name: "Orders", href: "/admin/orders" },
+      { name: "Revenue", href: "/admin/revenue" },
     ],
   },
   {

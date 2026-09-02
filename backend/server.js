@@ -15,6 +15,7 @@ import productRoutes from "./routes/productRoutes.js";
 import addressRoutes from "./routes/addressRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
+import revenueRoutes from "./routes/revenueRoutes.js";
 
 // ============================================================
 // ENVIRONMENT
@@ -73,9 +74,6 @@ console.log(
 app.use(
     cors({
         origin(origin, callback) {
-            // Allow requests without an Origin header.
-            // Useful for server-to-server requests,
-            // uptime monitors and health checks.
             if (!origin) {
                 return callback(null, true);
             }
@@ -116,26 +114,6 @@ app.use(
 // ============================================================
 // HEALTH CHECK
 // ============================================================
-
-/*
- * Lightweight endpoint for:
- *
- * - Render health checks
- * - External uptime monitoring
- * - Service availability testing
- *
- * IMPORTANT:
- *
- * This endpoint intentionally does NOT connect to MongoDB.
- *
- * External uptime monitor can request:
- *
- * GET /health
- *
- * every 10 minutes.
- *
- * Do NOT use setInterval() here.
- */
 
 app.get(
     "/health",
@@ -276,14 +254,6 @@ app.use(
 // DATABASE
 // ============================================================
 
-/*
- * MongoDB is connected only for /api requests.
- *
- * /health and / do NOT connect to MongoDB.
- *
- * This keeps health checks extremely fast and lightweight.
- */
-
 app.use(
     "/api",
     async (
@@ -335,6 +305,11 @@ app.use(
     cartRoutes
 );
 
+app.use(
+    "/api/admin/revenue",
+    revenueRoutes
+);
+
 // ============================================================
 // API 404
 // ============================================================
@@ -365,10 +340,6 @@ app.use(
             err?.stack || err
         );
 
-        // ----------------------------------------------------
-        // CORS
-        // ----------------------------------------------------
-
         if (
             err?.message ===
             "Not allowed by CORS"
@@ -379,10 +350,6 @@ app.use(
                     "Origin is not allowed.",
             });
         }
-
-        // ----------------------------------------------------
-        // MULTER
-        // ----------------------------------------------------
 
         if (
             err?.name === "MulterError"
@@ -395,10 +362,6 @@ app.use(
             });
         }
 
-        // ----------------------------------------------------
-        // AUTHENTICATION
-        // ----------------------------------------------------
-
         if (
             err?.message ===
                 "Unauthenticated" ||
@@ -410,10 +373,6 @@ app.use(
                     "Unauthenticated",
             });
         }
-
-        // ----------------------------------------------------
-        // GENERAL ERROR
-        // ----------------------------------------------------
 
         return res
             .status(
@@ -435,24 +394,6 @@ app.use(
 // ============================================================
 // SERVER START
 // ============================================================
-
-/*
- * IMPORTANT FOR RENDER + VERCEL
- *
- * Vercel:
- * - VERCEL environment variable is available.
- * - Export the Express app.
- * - Do NOT call app.listen().
- *
- * Render:
- * - VERCEL is not present.
- * - Render provides process.env.PORT.
- * - Start Express on that port.
- *
- * Local:
- * - VERCEL is not present.
- * - Use PORT from environment or 5000.
- */
 
 const isVercel =
     process.env.VERCEL === "1" ||
@@ -504,9 +445,5 @@ if (!isVercel) {
         }
     );
 }
-
-// ============================================================
-// EXPORT
-// ============================================================
 
 export default app;

@@ -118,18 +118,28 @@ export default async function AdminPage() {
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Header */}
-      <header>
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B9954F] sm:text-xs">
-          Management Console
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#B9954F] sm:text-xs">
+            Management Console
+          </p>
 
-        <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#0A1B2E] sm:text-3xl">
-          Admin Dashboard
-        </h1>
+          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#0A1B2E] sm:text-3xl">
+            Admin Dashboard
+          </h1>
 
-        <p className="mt-1 text-sm leading-6 text-[#64748B]">
-          Overview of sales, shipments, and catalog inventory.
-        </p>
+          <p className="mt-1 text-sm leading-6 text-[#64748B]">
+            Overview of sales, shipments, and catalog inventory.
+          </p>
+        </div>
+
+        <Link
+          href="/admin/revenue"
+          className="inline-flex items-center justify-center gap-2 rounded-[10px] bg-[#0A1B2E] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#142C46]"
+        >
+          <span>View Revenue Analytics</span>
+          <span className="text-[#B9954F]">→</span>
+        </Link>
       </header>
 
       {/* KPI */}
@@ -144,9 +154,17 @@ export default async function AdminPage() {
             ₹{data.totalRevenue.toLocaleString("en-IN")}
           </p>
 
-          <p className="mt-2 text-xs font-semibold text-green-600">
-            From verified paid payments
-          </p>
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-green-600">
+              Verified paid payments
+            </span>
+            <Link
+              href="/admin/revenue"
+              className="text-xs font-bold text-[#B9954F] hover:underline"
+            >
+              Details →
+            </Link>
+          </div>
         </div>
 
         {/* Needs Shipping */}
