@@ -12,90 +12,230 @@ export interface WhatsAppOrderContext {
 
 /**
  * Safely normalizes customer phone numbers for WhatsApp wa.me links.
- * Handles 10-digit Indian numbers, numbers with +91, and international formats.
  */
 export function normalizePhoneNumber(rawPhone?: string): string | null {
   if (!rawPhone) return null;
-  
-  // Remove all non-digit characters except leading plus
+
   let cleaned = rawPhone.trim();
   const hasPlus = cleaned.startsWith("+");
+
   cleaned = cleaned.replace(/\D/g, "");
 
   if (!cleaned) return null;
 
-  // If it already has country code included or is international
   if (hasPlus) {
     return cleaned;
   }
 
-  // If it's a 10-digit Indian mobile number
   if (cleaned.length === 10) {
     return `91${cleaned}`;
   }
 
-  // If it's 12 digits starting with 91
   if (cleaned.length === 12 && cleaned.startsWith("91")) {
     return cleaned;
   }
 
-  // Default fallback for other valid lengths
   return cleaned.length >= 10 ? cleaned : null;
 }
 
 /**
- * Generates the correct customer-facing tracking URL using the order MongoDB _id.
+ * Customer tracking page.
  */
 export function getCustomerTrackingUrl(orderId: string): string {
   return `https://newprint.kundapura.in/dashboard/orders/${orderId}/track`;
 }
 
 /**
- * Builds the professional, pre-filled WhatsApp message for Shipped orders.
+ * SHIPPED
+ *
+ * IMPORTANT:
+ * This message intentionally uses ASCII characters only.
+ * Do not add emojis or Unicode separators here until
+ * the message pipeline encoding issue is fixed.
  */
-export function buildShippedWhatsAppMessage(order: WhatsAppOrderContext): string {
+export function buildShippedWhatsAppMessage(
+  order: WhatsAppOrderContext
+): string {
   const trackingUrl = getCustomerTrackingUrl(order._id);
-  const provider = order.shippingProvider || "India Post";
-  const customerName = order.shippingAddress?.fullName?.trim() || "Customer";
 
-  return `Hi ${customerName} 👋
+  const provider =
+    order.shippingProvider?.trim() || "India Post";
 
-Great news! Your NEW PRINT order #${order.orderNumber} has been shipped. 📦
+  const customerName =
+    order.shippingAddress?.fullName?.trim() || "Customer";
 
-Your package is now on its way via ${provider}.
+  return `*ORDER SHIPPED!*
 
-Track your order here:
+Hi ${customerName},
+
+Great news! Your *NEW PRINT* order is officially on its way.
+
+*Order:* #${order.orderNumber}
+*Courier:* ${provider}
+*Status:* Shipped
+
+------------------------------
+
+*TRACK YOUR ORDER*
+
+Check your latest order status and tracking information here:
+
 ${trackingUrl}
 
-Thank you for choosing NEW PRINT! ❤️`;
+------------------------------
+
+*WHAT'S NEXT?*
+
+Your package is now with the courier and making its way to you.
+
+We will keep you updated when your order reaches the next stage.
+
+Thank you for choosing *NEW PRINT*!
+
+If you have any questions about your order, simply reply to this WhatsApp message and our team will help you.
+
+- NEW PRINT`;
 }
 
 /**
- * Builds the professional, pre-filled WhatsApp message for Delivered orders.
+ * DELIVERED
  */
-export function buildDeliveredWhatsAppMessage(order: WhatsAppOrderContext): string {
+export function buildDeliveredWhatsAppMessage(
+  order: WhatsAppOrderContext
+): string {
   const trackingUrl = getCustomerTrackingUrl(order._id);
-  const customerName = order.shippingAddress?.fullName?.trim() || "Customer";
 
-  return `Hi ${customerName} 👋
+  const customerName =
+    order.shippingAddress?.fullName?.trim() || "Customer";
 
-Your NEW PRINT order #${order.orderNumber} has been delivered successfully. 🎉
+  return `*ORDER DELIVERED!*
 
-We hope you love your order!
+Hi ${customerName},
 
-You can view your order here:
+Your *NEW PRINT* order has been delivered successfully.
+
+*Order:* #${order.orderNumber}
+*Status:* Delivered
+
+------------------------------
+
+*WE HOPE YOU LOVE IT!*
+
+Your order has safely reached you.
+
+You can view your order details anytime here:
+
 ${trackingUrl}
 
-Thank you for choosing NEW PRINT. ❤️`;
+------------------------------
+
+*NEED HELP?*
+
+If there is any issue with your order, don't worry.
+
+Just reply to this WhatsApp message and our team will be happy to help.
+
+Thank you for supporting *NEW PRINT*!
+
+We hope to see you again soon.
+
+- NEW PRINT`;
 }
 
 /**
- * Creates a safe, properly URL-encoded click-to-chat WhatsApp link.
+ * OUT FOR DELIVERY
  */
-export function buildWhatsAppUrl(phone: string, message: string): string | null {
+export function buildOutForDeliveryWhatsAppMessage(
+  order: WhatsAppOrderContext
+): string {
+  const trackingUrl = getCustomerTrackingUrl(order._id);
+
+  const provider =
+    order.shippingProvider?.trim() || "your courier";
+
+  const customerName =
+    order.shippingAddress?.fullName?.trim() || "Customer";
+
+  return `*OUT FOR DELIVERY!*
+
+Hi ${customerName},
+
+Your *NEW PRINT* order is almost at your doorstep.
+
+*Order:* #${order.orderNumber}
+*Courier:* ${provider}
+*Status:* Out for Delivery
+
+------------------------------
+
+*EXPECTED SOON*
+
+Your package is currently out for delivery.
+
+Please keep your phone available in case the delivery partner needs to contact you.
+
+------------------------------
+
+*CHECK ORDER STATUS*
+
+${trackingUrl}
+
+------------------------------
+
+Thank you for choosing *NEW PRINT*!
+
+- NEW PRINT`;
+}
+
+/**
+ * CANCELLED
+ */
+export function buildCancelledWhatsAppMessage(
+  order: WhatsAppOrderContext
+): string {
+  const trackingUrl = getCustomerTrackingUrl(order._id);
+
+  const customerName =
+    order.shippingAddress?.fullName?.trim() || "Customer";
+
+  return `*ORDER UPDATE*
+
+Hi ${customerName},
+
+Your *NEW PRINT* order #${order.orderNumber} has been cancelled.
+
+*Order:* #${order.orderNumber}
+*Status:* Cancelled
+
+------------------------------
+
+You can view your order details here:
+
+${trackingUrl}
+
+------------------------------
+
+*HAVE QUESTIONS?*
+
+If you believe this cancellation was unexpected or you need more information, simply reply to this WhatsApp message.
+
+Our team will be happy to help.
+
+- NEW PRINT`;
+}
+
+/**
+ * Creates WhatsApp click-to-chat URL.
+ */
+export function buildWhatsAppUrl(
+  phone: string,
+  message: string
+): string | null {
   const normalizedPhone = normalizePhoneNumber(phone);
-  if (!normalizedPhone) return null;
 
-  const encodedMessage = encodeURIComponent(message);
-  return `https://wa.me/${normalizedPhone}?text=${encodedMessage}`;
+  if (!normalizedPhone) {
+    return null;
+  }
+
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 }
