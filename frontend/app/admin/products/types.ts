@@ -19,14 +19,14 @@ export type ProductPricingType =
 /**
  * One price + inventory combination
  * for a product variant.
+ *
+ * Inventory is managed separately from
+ * the Product Form.
  */
 export interface ProductVariant {
   _id?: string;
 
-  selections: Record<
-    string,
-    string
-  >;
+  selections: Record<string, string>;
 
   /**
    * Original / MRP price.
@@ -44,13 +44,16 @@ export interface ProductVariant {
   sku?: string;
 
   /**
-   * Currently available quantity.
+   * Current available quantity.
+   *
+   * Inventory is managed separately.
    */
   stock: number;
 
   /**
-   * Show low-stock warning when stock
-   * reaches this number.
+   * Low-stock threshold.
+   *
+   * Inventory is managed separately.
    */
   lowStockThreshold?: number;
 
@@ -78,10 +81,7 @@ export interface Product {
    * 250  = 250 grams
    * 500  = 500 grams
    *
-   * This value is used only for internal
-   * shipping calculation.
-   *
-   * Do not display this value to customers.
+   * Used only for internal shipping calculation.
    */
   weight?: number;
 
@@ -105,13 +105,15 @@ export interface Product {
   pricingType?: ProductPricingType;
 
   /**
-   * Stock for fixed-price products.
+   * Inventory is managed separately.
+   *
+   * Kept in the type because the API/product
+   * object may still contain inventory data.
    */
   stock?: number;
 
   /**
-   * Low-stock warning threshold
-   * for fixed-price products.
+   * Inventory is managed separately.
    */
   lowStockThreshold?: number;
 
@@ -122,6 +124,20 @@ export interface Product {
   orderSelections?: ProductOrderSelection[];
 
   variants?: ProductVariant[];
+
+  /**
+   * Products manually selected as related products.
+   *
+   * Stored as product IDs.
+   *
+   * The API may return these either as IDs or
+   * populated Product objects, so the frontend
+   * handles both forms.
+   */
+  relatedProducts?: (
+    | string
+    | Product
+  )[];
 
   status:
     | "active"

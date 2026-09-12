@@ -15,6 +15,7 @@ import productRoutes from "./routes/productRoutes.js";
 import addressRoutes from "./routes/addressRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
+import stockRoutes from "./routes/stockRoutes.js";
 import revenueRoutes from "./routes/revenueRoutes.js";
 
 // ============================================================
@@ -288,6 +289,10 @@ app.use(
 app.use(
     "/api/products",
     productRoutes
+);
+app.use(
+    "/api/stock",
+    stockRoutes
 );
 
 app.use(

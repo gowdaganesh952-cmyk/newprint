@@ -2228,3 +2228,61 @@ export const updateOrderStatusAdmin = async (req, res) => {
         });
     }
 };
+/* ============================================================
+   DELETE NOT COMPLETED ORDER
+   DELETE /api/orders/:id
+============================================================ */
+
+export const deleteNotCompletedOrder = async (req, res) => {
+  try {
+    const userId = req.auth.userId;
+    const orderId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid order ID.",
+      });
+    }
+
+    const order = await Order.findOne({
+      _id: orderId,
+      userId,
+    });
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found.",
+      });
+    }
+
+    /*
+     * Never allow deleting a paid or confirmed order.
+     */
+    if (
+      order.status !== "Not Completed" ||
+      order.paymentStatus === "Paid"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Only incomplete unpaid orders can be deleted.",
+      });
+    }
+
+    await order.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Incomplete order deleted successfully.",
+      orderId,
+    });
+  } catch (error) {
+    console.error("Delete incomplete order error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete incomplete order.",
+    });
+  }
+};

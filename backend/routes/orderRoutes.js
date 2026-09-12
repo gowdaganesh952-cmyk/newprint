@@ -14,6 +14,7 @@ import {
   getAdminOrders,
   getAdminOrderStats,
   getAdminOrderById,
+  deleteNotCompletedOrder,
   updateOrderStatusAdmin
 } from "../controllers/orderController.js";
 
@@ -106,6 +107,10 @@ router.get(
   getOrders
 );
 
+router.delete(
+  "/:id",
+  deleteNotCompletedOrder
+);
 /* ============================================================
    GET SINGLE USER ORDER
 ============================================================ */
@@ -120,5 +125,6 @@ router.get(
   "/:id",
   getOrderById
 );
+
 
 export default router;

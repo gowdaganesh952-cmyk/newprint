@@ -118,6 +118,23 @@ function calculateDiscountPercentage(
 }
 
 // ============================================================
+// GET PRODUCT ID
+// Supports both:
+// "productId"
+// and populated { _id, ... }
+// ============================================================
+
+function getProductId(
+  product: string | Product
+): string {
+  if (typeof product === "string") {
+    return product;
+  }
+
+  return product._id;
+}
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
@@ -165,10 +182,6 @@ export default function ProductForm({
 
   // ==========================================================
   // INTERNAL SHIPPING WEIGHT
-  //
-  // Stored in grams.
-  // Used only for shipping calculation.
-  // Never displayed to customers.
   // ==========================================================
 
   const [weight, setWeight] = useState<string>(
@@ -206,26 +219,17 @@ export default function ProductForm({
   );
 
   // ==========================================================
-  // FIXED PRODUCT INVENTORY
-  // ==========================================================
-
-  const [stock, setStock] = useState<string>(
-    initialData?.stock !== undefined &&
-      initialData?.stock !== null
-      ? String(initialData.stock)
-      : "0"
-  );
-
-  const [lowStockThreshold, setLowStockThreshold] =
-    useState<string>(
-      initialData?.lowStockThreshold !== undefined &&
-        initialData?.lowStockThreshold !== null
-        ? String(initialData.lowStockThreshold)
-        : "5"
-    );
-
-  // ==========================================================
   // VARIANTS
+  //
+  // IMPORTANT:
+  // Stock management has intentionally been removed
+  // from this Product Form.
+  //
+  // Existing stock values are preserved in memory so that
+  // changing options does not accidentally destroy existing
+  // inventory values.
+  //
+  // Inventory itself will be handled separately.
   // ==========================================================
 
   const [variants, setVariants] = useState<
@@ -239,7 +243,10 @@ export default function ProductForm({
 
       return {
         ...variant,
-        selections: { ...variant.selections },
+
+        selections: {
+          ...variant.selections,
+        },
 
         originalPrice:
           Number.isFinite(variant.originalPrice)
@@ -250,6 +257,7 @@ export default function ProductForm({
 
         sku: variant.sku || "",
 
+        // Preserve existing inventory values.
         stock:
           Number.isFinite(variant.stock)
             ? variant.stock
@@ -291,22 +299,6 @@ export default function ProductForm({
   );
 
   // ==========================================================
-  // CLEAN UP LOCAL IMAGE PREVIEWS
-  // ==========================================================
-
-  useEffect(() => {
-    return () => {
-      images.forEach((image) => {
-        if (image.file) {
-          URL.revokeObjectURL(
-            image.previewUrl
-          );
-        }
-      });
-    };
-  }, [images]);
-
-  // ==========================================================
   // PRODUCT OPTIONS
   // ==========================================================
 
@@ -328,6 +320,31 @@ export default function ProductForm({
 
   const [newOrderSelectionValue, setNewOrderSelectionValue] =
     useState<Record<number, string>>({});
+
+  // ==========================================================
+  // RELATED PRODUCTS
+  // ==========================================================
+
+  const [allProducts, setAllProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] =
+    useState(true);
+  const [productLoadError, setProductLoadError] =
+    useState(false);
+
+  const [relatedProductIds, setRelatedProductIds] =
+    useState<string[]>(() => {
+      const existing =
+        initialData?.relatedProducts || [];
+
+      return existing
+        .map((product) =>
+          getProductId(product)
+        )
+        .filter(Boolean);
+    });
+
+  const [relatedProductSearch, setRelatedProductSearch] =
+    useState("");
 
   // ==========================================================
   // FORM
@@ -377,6 +394,49 @@ export default function ProductForm({
   }, [api]);
 
   // ==========================================================
+  // LOAD PRODUCTS FOR RELATED PRODUCTS
+  // ==========================================================
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoadingProducts(true);
+        setProductLoadError(false);
+
+        const data = await api.get<
+          | {
+              success: boolean;
+              products: Product[];
+            }
+          | Product[]
+        >("/api/products");
+
+        if (Array.isArray(data)) {
+          setAllProducts(data);
+          return;
+        }
+
+        if (data.success) {
+          setAllProducts(data.products || []);
+        } else {
+          setProductLoadError(true);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load products for related products:",
+          error
+        );
+
+        setProductLoadError(true);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    fetchProducts();
+  }, [api]);
+
+  // ==========================================================
   // AUTO SLUG
   // ==========================================================
 
@@ -391,6 +451,113 @@ export default function ProductForm({
       setSlug(generatedSlug);
     }
   }, [name, isSlugManuallyEdited]);
+
+  // ==========================================================
+  // FILTER RELATED PRODUCTS
+  // ==========================================================
+
+  const availableRelatedProducts = useMemo(() => {
+    const search = relatedProductSearch
+      .trim()
+      .toLowerCase();
+
+    return allProducts.filter((product) => {
+      // Never allow a product to relate to itself.
+      if (
+        isEditing &&
+        initialData &&
+        product._id === initialData._id
+      ) {
+        return false;
+      }
+
+      if (!search) {
+        return true;
+      }
+
+      return (
+        product.name
+          .toLowerCase()
+          .includes(search) ||
+        product.slug
+          ?.toLowerCase()
+          .includes(search)
+      );
+    });
+  }, [
+    allProducts,
+    relatedProductSearch,
+    isEditing,
+    initialData,
+  ]);
+
+  // ==========================================================
+  // SELECTED RELATED PRODUCTS
+  // ==========================================================
+
+  const selectedRelatedProducts = useMemo(() => {
+    return relatedProductIds
+      .map((id) =>
+        allProducts.find(
+          (product) => product._id === id
+        )
+      )
+      .filter(
+        (product): product is Product =>
+          !!product
+      );
+  }, [allProducts, relatedProductIds]);
+
+  // ==========================================================
+  // TOGGLE RELATED PRODUCT
+  // ==========================================================
+
+  const toggleRelatedProduct = (
+    productId: string
+  ) => {
+    setRelatedProductIds((previous) => {
+      if (previous.includes(productId)) {
+        return previous.filter(
+          (id) => id !== productId
+        );
+      }
+
+      return [
+        ...previous,
+        productId,
+      ];
+    });
+  };
+
+  // ==========================================================
+  // REMOVE RELATED PRODUCT
+  // ==========================================================
+
+  const removeRelatedProduct = (
+    productId: string
+  ) => {
+    setRelatedProductIds((previous) =>
+      previous.filter(
+        (id) => id !== productId
+      )
+    );
+  };
+
+  // ==========================================================
+  // CLEAN UP LOCAL IMAGE PREVIEWS
+  // ==========================================================
+
+  useEffect(() => {
+    return () => {
+      images.forEach((image) => {
+        if (image.file) {
+          URL.revokeObjectURL(
+            image.previewUrl
+          );
+        }
+      });
+    };
+  }, [images]);
 
   // ==========================================================
   // IMAGE FUNCTIONS
@@ -741,8 +908,8 @@ export default function ProductForm({
   // GENERATE / UPDATE VARIANTS
   //
   // IMPORTANT:
-  // Existing price, SKU, stock and threshold are preserved.
-  // New combinations receive default stock = 0.
+  // Existing inventory values are preserved.
+  // Inventory is NOT edited here.
   // ==========================================================
 
   useEffect(() => {
@@ -763,6 +930,7 @@ export default function ProductForm({
 
           return {
             _id: existing?._id,
+
             selections: combination,
 
             originalPrice:
@@ -776,6 +944,7 @@ export default function ProductForm({
             sku:
               existing?.sku || "",
 
+            // Preserve existing inventory.
             stock:
               existing?.stock ?? 0,
 
@@ -869,72 +1038,6 @@ export default function ProductForm({
   };
 
   // ==========================================================
-  // UPDATE VARIANT STOCK
-  // ==========================================================
-
-  const updateVariantStock = (
-    index: number,
-    value: string
-  ) => {
-    const numericValue =
-      value === ""
-        ? 0
-        : Number(value);
-
-    if (
-      !Number.isFinite(numericValue) ||
-      numericValue < 0
-    ) {
-      return;
-    }
-
-    setVariants((previous) => {
-      const updated = [...previous];
-
-      updated[index] = {
-        ...updated[index],
-        stock: Math.floor(numericValue),
-      };
-
-      return updated;
-    });
-  };
-
-  // ==========================================================
-  // UPDATE VARIANT LOW STOCK THRESHOLD
-  // ==========================================================
-
-  const updateVariantLowStockThreshold = (
-    index: number,
-    value: string
-  ) => {
-    const numericValue =
-      value === ""
-        ? 0
-        : Number(value);
-
-    if (
-      !Number.isFinite(numericValue) ||
-      numericValue < 0
-    ) {
-      return;
-    }
-
-    setVariants((previous) => {
-      const updated = [...previous];
-
-      updated[index] = {
-        ...updated[index],
-        lowStockThreshold: Math.floor(
-          numericValue
-        ),
-      };
-
-      return updated;
-    });
-  };
-
-  // ==========================================================
   // RESET PRICING
   // ==========================================================
 
@@ -1006,34 +1109,6 @@ export default function ProductForm({
       ) {
         return "Original price cannot be less than selling price.";
       }
-    }
-
-    // ========================================================
-    // FIXED PRODUCT INVENTORY
-    // ========================================================
-
-    if (
-      pricingType === "fixed" &&
-      (
-        stock === "" ||
-        Number.isNaN(Number(stock)) ||
-        Number(stock) < 0
-      )
-    ) {
-      return "Please enter a valid stock quantity.";
-    }
-
-    if (
-      pricingType === "fixed" &&
-      (
-        lowStockThreshold === "" ||
-        Number.isNaN(
-          Number(lowStockThreshold)
-        ) ||
-        Number(lowStockThreshold) < 0
-      )
-    ) {
-      return "Please enter a valid low-stock threshold.";
     }
 
     // ========================================================
@@ -1114,25 +1189,15 @@ export default function ProductForm({
         ) {
           return `Original price cannot be less than selling price for ${combination}.`;
         }
-
-        if (
-          !Number.isFinite(
-            variant.stock
-          ) ||
-          variant.stock < 0
-        ) {
-          return `Enter a valid stock quantity for ${combination}.`;
-        }
-
-        if (
-          !Number.isFinite(
-            variant.lowStockThreshold
-          ) ||
-          (variant.lowStockThreshold ?? 0) < 0
-        ) {
-          return `Enter a valid low-stock threshold for ${combination}.`;
-        }
       }
+    }
+
+    // ========================================================
+    // RELATED PRODUCTS
+    // ========================================================
+
+    if (relatedProductIds.includes(initialData?._id || "")) {
+      return "A product cannot be related to itself.";
     }
 
     return null;
@@ -1211,23 +1276,16 @@ export default function ProductForm({
         price
       );
 
-      formData.append(
-        "stock",
-        String(
-          Math.floor(
-            Number(stock)
-          )
-        )
-      );
-
-      formData.append(
-        "lowStockThreshold",
-        String(
-          Math.floor(
-            Number(lowStockThreshold)
-          )
-        )
-      );
+      /*
+       * IMPORTANT:
+       * Stock management has been removed from this form.
+       *
+       * We intentionally do NOT send:
+       * stock
+       * lowStockThreshold
+       *
+       * The separate inventory system will manage them.
+       */
 
       formData.append(
         "variants",
@@ -1263,6 +1321,12 @@ export default function ProductForm({
                   variant.price ?? 0
                 ),
 
+              /*
+               * Existing inventory values are
+               * preserved for backend compatibility.
+               *
+               * They are NOT editable from this UI.
+               */
               stock:
                 Math.floor(
                   Number(
@@ -1280,19 +1344,8 @@ export default function ProductForm({
           )
         )
       );
-
-      // Variant products don't use
-      // product-level stock.
-      formData.append(
-        "stock",
-        "0"
-      );
-
-      formData.append(
-        "lowStockThreshold",
-        "0"
-      );
     }
+
     // ========================================================
     // OTHER DATA
     // ========================================================
@@ -1318,16 +1371,23 @@ export default function ProductForm({
     );
 
     // ========================================================
+    // RELATED PRODUCTS
+    //
+    // Always send the complete selected ID list.
+    //
+    // This allows editing a product and removing all
+    // related products by sending [].
+    // ========================================================
+
+    formData.append(
+      "relatedProducts",
+      JSON.stringify(
+        relatedProductIds
+      )
+    );
+
+    // ========================================================
     // IMAGES
-    //
-    // Preserve the EXACT order shown in the editor.
-    //
-    // Existing images are represented by their URL.
-    // New images use stable placeholders:
-    // __NEW_IMAGE_0__, __NEW_IMAGE_1__, ...
-    //
-    // The backend uploads new files and replaces the
-    // placeholders with the resulting Cloudinary URLs.
     // ========================================================
 
     const imageOrder: string[] = [];
@@ -1584,9 +1644,7 @@ export default function ProductForm({
 
           </div>
 
-          {/* ==================================================
-              INTERNAL SHIPPING WEIGHT
-          =================================================== */}
+          {/* INTERNAL SHIPPING WEIGHT */}
 
           <div>
 
@@ -1678,8 +1736,6 @@ export default function ProductForm({
           </p>
 
         </div>
-
-        {/* PRICING TYPE */}
 
         <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
 
@@ -1778,14 +1834,14 @@ export default function ProductForm({
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-              {/* ORIGINAL PRICE */}
-
               <div>
+
                 <label className="block text-sm font-semibold text-[#0A1B2E]">
                   Original Price / MRP *
                 </label>
 
                 <div className="relative mt-2">
+
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
                     ₹
                   </span>
@@ -1803,21 +1859,23 @@ export default function ProductForm({
                     placeholder="1999"
                     className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
                   />
+
                 </div>
 
                 <p className="mt-1.5 text-xs text-[#94A3B8]">
                   Price before discount.
                 </p>
+
               </div>
 
-              {/* SELLING PRICE */}
-
               <div>
+
                 <label className="block text-sm font-semibold text-[#0A1B2E]">
                   Selling Price *
                 </label>
 
                 <div className="relative mt-2">
+
                   <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#64748B]">
                     ₹
                   </span>
@@ -1835,16 +1893,16 @@ export default function ProductForm({
                     placeholder="486"
                     className="w-full rounded-[9px] border border-[#E5E7EB] py-2.5 pl-8 pr-3 text-sm outline-none focus:border-[#B9954F]"
                   />
+
                 </div>
 
                 <p className="mt-1.5 text-xs text-[#94A3B8]">
                   Actual price charged to the customer.
                 </p>
+
               </div>
 
             </div>
-
-            {/* DISCOUNT PREVIEW */}
 
             {Number(originalPrice) > Number(price) &&
               Number(price) >= 0 &&
@@ -1918,9 +1976,8 @@ export default function ProductForm({
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-amber-700">
-                  Variant prices and inventory
-                  will automatically appear
-                  once the options have values.
+                  Variant prices will automatically
+                  appear once the options have values.
                 </p>
 
               </div>
@@ -1934,13 +1991,13 @@ export default function ProductForm({
                   <div>
 
                     <h3 className="text-sm font-bold text-[#0A1B2E]">
-                      Variant Pricing & Inventory
+                      Variant Pricing
                     </h3>
 
                     <p className="mt-1 text-xs text-[#64748B]">
-                      Set price, SKU, stock and
-                      low-stock alert for every
-                      customer selection.
+                      Set original price, selling price
+                      and SKU for every customer selection.
+                      Inventory is managed separately.
                     </p>
 
                   </div>
@@ -1958,7 +2015,7 @@ export default function ProductForm({
 
                   {/* DESKTOP HEADER */}
 
-                  <div className="hidden grid-cols-[1fr_120px_120px_120px_100px] gap-3 bg-[#F7F7F5] px-4 py-3 lg:grid">
+                  <div className="hidden grid-cols-[1fr_140px_140px_140px] gap-3 bg-[#F7F7F5] px-4 py-3 lg:grid">
 
                     <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
                       Selection
@@ -1976,10 +2033,6 @@ export default function ProductForm({
                       SKU
                     </div>
 
-                    <div className="text-[11px] font-extrabold uppercase tracking-[0.08em] text-[#64748B]">
-                      Stock
-                    </div>
-
                   </div>
 
                   <div className="divide-y divide-[#E5E7EB]">
@@ -1991,7 +2044,7 @@ export default function ProductForm({
                           key={`${formatCombination(
                             variant.selections
                           )}-${index}`}
-                          className="grid grid-cols-1 gap-4 px-4 py-5 lg:grid-cols-[1fr_120px_120px_120px_100px] lg:items-start lg:gap-3"
+                          className="grid grid-cols-1 gap-4 px-4 py-5 lg:grid-cols-[1fr_140px_140px_140px] lg:items-start lg:gap-3"
                         >
 
                           {/* SELECTION */}
@@ -2003,34 +2056,6 @@ export default function ProductForm({
                                 variant.selections
                               )}
                             </p>
-
-                            <div className="mt-2 flex items-center gap-2">
-
-                              <span
-                                className={`rounded-full px-2 py-1 text-[10px] font-bold ${
-                                  variant.stock === 0
-                                    ? "bg-red-100 text-red-700"
-                                    : variant.stock <=
-                                      (variant.lowStockThreshold ??
-                                        5)
-                                    ? "bg-amber-100 text-amber-700"
-                                    : "bg-green-100 text-green-700"
-                                }`}
-                              >
-                                {variant.stock === 0
-                                  ? "Out of Stock"
-                                  : variant.stock <=
-                                    (variant.lowStockThreshold ??
-                                      5)
-                                  ? "Low Stock"
-                                  : "In Stock"}
-                              </span>
-
-                              <span className="text-[11px] text-[#94A3B8]">
-                                {variant.stock} available
-                              </span>
-
-                            </div>
 
                           </div>
 
@@ -2153,53 +2178,6 @@ export default function ProductForm({
 
                           </div>
 
-                          {/* STOCK */}
-
-                          <div>
-
-                            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                              Stock
-                            </label>
-
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={
-                                variant.stock
-                              }
-                              onChange={(e) =>
-                                updateVariantStock(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              className="w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-sm font-semibold outline-none focus:border-[#B9954F]"
-                            />
-
-                            <label className="mb-1 mt-3 block text-[10px] font-bold uppercase tracking-wider text-[#94A3B8]">
-                              Low Stock At
-                            </label>
-
-                            <input
-                              type="number"
-                              min="0"
-                              step="1"
-                              value={
-                                variant.lowStockThreshold ??
-                                5
-                              }
-                              onChange={(e) =>
-                                updateVariantLowStockThreshold(
-                                  index,
-                                  e.target.value
-                                )
-                              }
-                              className="w-full rounded-[8px] border border-[#E5E7EB] px-3 py-2 text-sm outline-none focus:border-[#B9954F]"
-                            />
-
-                          </div>
-
                         </div>
 
                       )
@@ -2217,152 +2195,6 @@ export default function ProductForm({
         )}
 
       </div>
-
-      {/* ======================================================
-          FIXED PRODUCT INVENTORY
-      ======================================================= */}
-
-      {pricingType === "fixed" && (
-        <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
-
-          <div>
-
-            <h2 className="text-lg font-bold text-[#0A1B2E]">
-              Inventory
-            </h2>
-
-            <p className="mt-1 text-sm leading-5 text-[#64748B]">
-              Set the available quantity for this
-              product. Later, use the Inventory page
-              to add or remove stock without changing
-              the original product information.
-            </p>
-
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2">
-
-            {/* STOCK */}
-
-            <div>
-
-              <label className="block text-sm font-semibold text-[#0A1B2E]">
-                Initial Stock *
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={stock}
-                onChange={(e) => {
-                  const value =
-                    e.target.value;
-
-                  if (
-                    value === "" ||
-                    (/^\d+$/.test(value) &&
-                      Number(value) >= 0)
-                  ) {
-                    setStock(value);
-                  }
-                }}
-                placeholder="20"
-                className="mt-2 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#B9954F]"
-              />
-
-              <p className="mt-2 text-xs text-[#94A3B8]">
-                Example: 20 units available.
-              </p>
-
-            </div>
-
-            {/* LOW STOCK */}
-
-            <div>
-
-              <label className="block text-sm font-semibold text-[#0A1B2E]">
-                Low Stock Alert
-              </label>
-
-              <input
-                type="number"
-                min="0"
-                step="1"
-                value={lowStockThreshold}
-                onChange={(e) => {
-                  const value =
-                    e.target.value;
-
-                  if (
-                    value === "" ||
-                    (/^\d+$/.test(value) &&
-                      Number(value) >= 0)
-                  ) {
-                    setLowStockThreshold(
-                      value
-                    );
-                  }
-                }}
-                placeholder="5"
-                className="mt-2 w-full rounded-[9px] border border-[#E5E7EB] px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#B9954F]"
-              />
-
-              <p className="mt-2 text-xs text-[#94A3B8]">
-                Show a low-stock warning when
-                stock reaches this number.
-              </p>
-
-            </div>
-
-          </div>
-
-          {/* STOCK PREVIEW */}
-
-          <div className="mt-5 rounded-[10px] border border-[#E5E7EB] bg-[#FAFAF9] p-4">
-
-            <div className="flex items-center justify-between gap-4">
-
-              <div>
-
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#94A3B8]">
-                  Current Availability
-                </p>
-
-                <p className="mt-1 text-2xl font-bold text-[#0A1B2E]">
-                  {stock || 0}
-                </p>
-
-              </div>
-
-              <span
-                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                  Number(stock || 0) === 0
-                    ? "bg-red-100 text-red-700"
-                    : Number(stock || 0) <=
-                      Number(
-                        lowStockThreshold || 0
-                      )
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-green-100 text-green-700"
-                }`}
-              >
-                {Number(stock || 0) === 0
-                  ? "Out of Stock"
-                  : Number(stock || 0) <=
-                    Number(
-                      lowStockThreshold || 0
-                    )
-                  ? "Low Stock"
-                  : "In Stock"}
-              </span>
-
-            </div>
-
-          </div>
-
-        </div>
-      )}
 
       {/* ======================================================
           IMAGES
@@ -2878,13 +2710,293 @@ export default function ProductForm({
                   </div>
 
                 </div>
-
               )
             )}
 
           </div>
 
         )}
+
+      </div>
+
+      {/* ======================================================
+          RELATED PRODUCTS
+      ======================================================= */}
+
+      <div className="rounded-[12px] border border-[#E5E7EB] bg-white p-6 shadow-sm">
+
+        <div>
+
+          <h2 className="text-lg font-bold text-[#0A1B2E]">
+            Related Products
+          </h2>
+
+          <p className="mt-1 max-w-2xl text-sm leading-5 text-[#64748B]">
+            Select products that customers may also
+            be interested in. These products can be
+            displayed as recommendations on the product
+            page.
+          </p>
+
+        </div>
+
+        {/* SELECTED PRODUCTS */}
+
+        {selectedRelatedProducts.length > 0 && (
+          <div className="mt-5">
+
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[#94A3B8]">
+              Selected Products
+            </p>
+
+            <div className="flex flex-wrap gap-2">
+
+              {selectedRelatedProducts.map(
+                (product) => (
+                  <div
+                    key={product._id}
+                    className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#E5E7EB] bg-[#F7F7F5] px-3 py-2"
+                  >
+
+                    {product.images?.[0] ? (
+                      <img
+                        src={product.images[0]}
+                        alt=""
+                        className="h-7 w-7 shrink-0 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E5E7EB] text-[10px] font-bold text-[#64748B]">
+                        {product.name
+                          .charAt(0)
+                          .toUpperCase()}
+                      </div>
+                    )}
+
+                    <span className="max-w-[180px] truncate text-xs font-semibold text-[#0A1B2E] sm:max-w-[260px]">
+                      {product.name}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        removeRelatedProduct(
+                          product._id
+                        )
+                      }
+                      className="ml-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[#64748B] hover:bg-red-100 hover:text-red-600"
+                      aria-label={`Remove ${product.name}`}
+                    >
+                      ×
+                    </button>
+
+                  </div>
+                )
+              )}
+
+            </div>
+
+          </div>
+        )}
+
+        {/* SEARCH */}
+
+        <div className="mt-5">
+
+          <label className="block text-sm font-semibold text-[#0A1B2E]">
+            Find Products
+          </label>
+
+          <div className="relative mt-2">
+
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[#94A3B8]">
+              🔎
+            </span>
+
+            <input
+              type="text"
+              value={relatedProductSearch}
+              onChange={(e) =>
+                setRelatedProductSearch(
+                  e.target.value
+                )
+              }
+              placeholder="Search products by name..."
+              className="w-full rounded-[9px] border border-[#E5E7EB] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#B9954F]"
+            />
+
+          </div>
+
+        </div>
+
+        {/* PRODUCTS */}
+
+        <div className="mt-3 overflow-hidden rounded-[10px] border border-[#E5E7EB]">
+
+          {loadingProducts ? (
+
+            <div className="flex items-center justify-center p-8">
+
+              <div className="h-7 w-7 animate-spin rounded-full border-4 border-[#E5E7EB] border-t-[#B9954F]" />
+
+              <span className="ml-3 text-sm text-[#64748B]">
+                Loading products...
+              </span>
+
+            </div>
+
+          ) : productLoadError ? (
+
+            <div className="p-6 text-center">
+
+              <p className="text-sm font-medium text-red-600">
+                Unable to load products.
+              </p>
+
+              <p className="mt-1 text-xs text-[#94A3B8]">
+                Please refresh the page and try again.
+              </p>
+
+            </div>
+
+          ) : availableRelatedProducts.length === 0 ? (
+
+            <div className="p-8 text-center">
+
+              <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#F7F7F5] text-lg">
+                {relatedProductSearch
+                  ? "⌕"
+                  : "📦"}
+              </div>
+
+              <p className="mt-3 text-sm font-semibold text-[#0A1B2E]">
+                {relatedProductSearch
+                  ? "No products found"
+                  : "No other products available"}
+              </p>
+
+              <p className="mt-1 text-xs text-[#94A3B8]">
+                {relatedProductSearch
+                  ? "Try a different product name."
+                  : "Create more products to add related products."}
+              </p>
+
+            </div>
+
+          ) : (
+
+            <div className="max-h-[360px] overflow-y-auto">
+
+              <div className="divide-y divide-[#E5E7EB]">
+
+                {availableRelatedProducts.map(
+                  (product) => {
+                    const selected =
+                      relatedProductIds.includes(
+                        product._id
+                      );
+
+                    return (
+                      <button
+                        key={product._id}
+                        type="button"
+                        onClick={() =>
+                          toggleRelatedProduct(
+                            product._id
+                          )
+                        }
+                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition ${
+                          selected
+                            ? "bg-[#B9954F]/5"
+                            : "bg-white hover:bg-[#FAFAF8]"
+                        }`}
+                      >
+
+                        {/* IMAGE */}
+
+                        {product.images?.[0] ? (
+                          <img
+                            src={product.images[0]}
+                            alt=""
+                            className="h-12 w-12 shrink-0 rounded-[8px] border border-[#E5E7EB] object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[8px] border border-[#E5E7EB] bg-[#F7F7F5] text-sm font-bold text-[#64748B]">
+                            {product.name
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+                        )}
+
+                        {/* DETAILS */}
+
+                        <div className="min-w-0 flex-1">
+
+                          <p className="truncate text-sm font-semibold text-[#0A1B2E]">
+                            {product.name}
+                          </p>
+
+                          {product.slug && (
+                            <p className="mt-0.5 truncate text-xs text-[#94A3B8]">
+                              /{product.slug}
+                            </p>
+                          )}
+
+                        </div>
+
+                        {/* CHECK */}
+
+                        <div
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border ${
+                            selected
+                              ? "border-[#B9954F] bg-[#B9954F] text-white"
+                              : "border-[#CBD5E1] bg-white"
+                          }`}
+                        >
+                          {selected && (
+                            <span className="text-xs font-bold">
+                              ✓
+                            </span>
+                          )}
+                        </div>
+
+                      </button>
+                    );
+                  }
+                )}
+
+              </div>
+
+            </div>
+
+          )}
+
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+
+          <p className="text-xs text-[#94A3B8]">
+            {relatedProductIds.length === 0
+              ? "No related products selected."
+              : `${relatedProductIds.length} related ${
+                  relatedProductIds.length === 1
+                    ? "product"
+                    : "products"
+                } selected.`}
+          </p>
+
+          {relatedProductIds.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setRelatedProductIds([])
+              }
+              className="text-xs font-semibold text-red-600 hover:text-red-700"
+            >
+              Clear all
+            </button>
+          )}
+
+        </div>
 
       </div>
 

@@ -4,398 +4,496 @@ import mongoose from "mongoose";
 // GENERAL PRODUCT OPTION
 // ============================================================
 
-const productOptionSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        values: [
-            {
+const productOptionSchema =
+    new mongoose.Schema(
+        {
+            name: {
                 type: String,
                 required: true,
                 trim: true,
             },
-        ],
-    },
-    {
-        _id: false,
-    }
-);
+
+            values: [
+                {
+                    type: String,
+                    required: true,
+                    trim: true,
+                },
+            ],
+        },
+        {
+            _id: false,
+        }
+    );
 
 // ============================================================
 // CUSTOMER ORDER SELECTION
 // ============================================================
 
-const productOrderSelectionSchema = new mongoose.Schema(
-    {
-        name: {
-            type: String,
-            required: true,
-            trim: true,
-        },
-
-        values: [
-            {
+const productOrderSelectionSchema =
+    new mongoose.Schema(
+        {
+            name: {
                 type: String,
                 required: true,
                 trim: true,
             },
-        ],
 
-        required: {
-            type: Boolean,
-            default: true,
+            values: [
+                {
+                    type: String,
+                    required: true,
+                    trim: true,
+                },
+            ],
+
+            required: {
+                type: Boolean,
+                default: true,
+            },
         },
-    },
-    {
-        _id: false,
-    }
-);
+        {
+            _id: false,
+        }
+    );
 
 // ============================================================
 // PRODUCT VARIANT
 // ============================================================
 
-const productVariantSchema = new mongoose.Schema(
-    {
-        selections: {
-            type: Map,
-            of: {
+const productVariantSchema =
+    new mongoose.Schema(
+        {
+            selections: {
+                type: Map,
+                of: {
+                    type: String,
+                    trim: true,
+                },
+                required: true,
+            },
+
+            // --------------------------------------------------
+            // ORIGINAL / MRP PRICE
+            // --------------------------------------------------
+
+            originalPrice: {
+                type: Number,
+
+                min: [
+                    0,
+                    "Original price cannot be negative",
+                ],
+
+                default: null,
+            },
+
+            // --------------------------------------------------
+            // CURRENT SELLING PRICE
+            // --------------------------------------------------
+
+            price: {
+                type: Number,
+
+                required: true,
+
+                min: [
+                    0,
+                    "Variant price cannot be negative",
+                ],
+            },
+
+            // --------------------------------------------------
+            // SKU
+            // --------------------------------------------------
+
+            sku: {
                 type: String,
+
                 trim: true,
+
+                default: "",
             },
-            required: true,
-        },
 
-        // ------------------------------------------------------
-        // ORIGINAL / MRP PRICE
-        // ------------------------------------------------------
+            // --------------------------------------------------
+            // INVENTORY
+            //
+            // IMPORTANT:
+            // Inventory is NOT managed by ProductForm.
+            //
+            // These fields remain in the database because
+            // the separate inventory/order system uses them.
+            // --------------------------------------------------
 
-        originalPrice: {
-            type: Number,
-            min: [
-                0,
-                "Original price cannot be negative",
-            ],
-            default: null,
-        },
+            stock: {
+                type: Number,
 
-        // ------------------------------------------------------
-        // CURRENT SELLING PRICE
-        // ------------------------------------------------------
+                required: true,
 
-        price: {
-            type: Number,
-            required: true,
-            min: [
-                0,
-                "Variant price cannot be negative",
-            ],
-        },
+                min: [
+                    0,
+                    "Variant stock cannot be negative",
+                ],
 
-        // ------------------------------------------------------
-        // SKU
-        // ------------------------------------------------------
+                default: 0,
 
-        sku: {
-            type: String,
-            trim: true,
-            default: "",
-        },
+                validate: {
+                    validator:
+                        Number.isInteger,
 
-        // ------------------------------------------------------
-        // STOCK
-        // ------------------------------------------------------
-
-        stock: {
-            type: Number,
-            required: true,
-            min: [
-                0,
-                "Variant stock cannot be negative",
-            ],
-            default: 0,
-            validate: {
-                validator: Number.isInteger,
-                message:
-                    "Variant stock must be a whole number",
+                    message:
+                        "Variant stock must be a whole number",
+                },
             },
-        },
 
-        // ------------------------------------------------------
-        // LOW STOCK THRESHOLD
-        // ------------------------------------------------------
+            lowStockThreshold: {
+                type: Number,
 
-        lowStockThreshold: {
-            type: Number,
-            min: [
-                0,
-                "Low stock threshold cannot be negative",
-            ],
-            default: 5,
-            validate: {
-                validator: Number.isInteger,
-                message:
-                    "Low stock threshold must be a whole number",
+                min: [
+                    0,
+                    "Low stock threshold cannot be negative",
+                ],
+
+                default: 5,
+
+                validate: {
+                    validator:
+                        Number.isInteger,
+
+                    message:
+                        "Low stock threshold must be a whole number",
+                },
+            },
+
+            // --------------------------------------------------
+            // STATUS
+            // --------------------------------------------------
+
+            status: {
+                type: String,
+
+                enum: [
+                    "active",
+                    "inactive",
+                ],
+
+                default: "active",
             },
         },
-
-        // ------------------------------------------------------
-        // STATUS
-        // ------------------------------------------------------
-
-        status: {
-            type: String,
-            enum: [
-                "active",
-                "inactive",
-            ],
-            default: "active",
-        },
-    },
-    {
-        _id: true,
-    }
-);
+        {
+            _id: true,
+        }
+    );
 
 // ============================================================
 // PRODUCT
 // ============================================================
 
-const productSchema = new mongoose.Schema(
-    {
-        // ------------------------------------------------------
-        // CATEGORY
-        // ------------------------------------------------------
+const productSchema =
+    new mongoose.Schema(
+        {
+            // --------------------------------------------------
+            // CATEGORY
+            // --------------------------------------------------
 
-        category: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Category",
-            required: [
-                true,
-                "Product category is required",
-            ],
-        },
+            category: {
+                type:
+                    mongoose.Schema.Types.ObjectId,
 
-        // ------------------------------------------------------
-        // BASIC INFORMATION
-        // ------------------------------------------------------
+                ref: "Category",
 
-        name: {
-            type: String,
-            required: [
-                true,
-                "Product name is required",
-            ],
-            trim: true,
-        },
-
-        slug: {
-            type: String,
-            required: [
-                true,
-                "Product slug is required",
-            ],
-            unique: true,
-            lowercase: true,
-            trim: true,
-        },
-
-        description: {
-            type: String,
-            trim: true,
-            default: "",
-        },
-
-        // ======================================================
-        // INTERNAL SHIPPING WEIGHT
-        //
-        // Stored in grams.
-        //
-        // Example:
-        // 100  = 100 grams
-        // 250  = 250 grams
-        // 500  = 500 grams
-        //
-        // This is ONLY used internally for shipping calculation.
-        // It should NOT be displayed to customers.
-        //
-        // Default 100 keeps older products valid.
-        // Admin should update existing products with their
-        // actual shipping weight.
-        // ======================================================
-
-        weight: {
-            type: Number,
-            required: true,
-            min: [
-                1,
-                "Product weight must be greater than 0 grams",
-            ],
-            validate: {
-                validator: Number.isInteger,
-                message:
-                    "Product weight must be a whole number of grams",
+                required: [
+                    true,
+                    "Product category is required",
+                ],
             },
-            default: 100,
-        },
 
-        // ------------------------------------------------------
-        // ORIGINAL / MRP PRICE
-        // ------------------------------------------------------
+            // --------------------------------------------------
+            // BASIC INFORMATION
+            // --------------------------------------------------
 
-        originalPrice: {
-            type: Number,
-            min: [
-                0,
-                "Original price cannot be negative",
-            ],
-            default: null,
-        },
+            name: {
+                type: String,
 
-        // ------------------------------------------------------
-        // CURRENT SELLING PRICE
-        // ------------------------------------------------------
+                required: [
+                    true,
+                    "Product name is required",
+                ],
 
-        price: {
-            type: Number,
-            min: [
-                0,
-                "Price cannot be negative",
-            ],
-            default: null,
-        },
-
-        // ------------------------------------------------------
-        // PRICING TYPE
-        // ------------------------------------------------------
-
-        pricingType: {
-            type: String,
-            enum: [
-                "fixed",
-                "variants",
-            ],
-            default: "fixed",
-        },
-
-        // ------------------------------------------------------
-        // FIXED PRODUCT STOCK
-        // ------------------------------------------------------
-
-        stock: {
-            type: Number,
-            min: [
-                0,
-                "Product stock cannot be negative",
-            ],
-            default: 0,
-            validate: {
-                validator: Number.isInteger,
-                message:
-                    "Product stock must be a whole number",
+                trim: true,
             },
-        },
 
-        // ------------------------------------------------------
-        // FIXED PRODUCT LOW STOCK THRESHOLD
-        // ------------------------------------------------------
+            slug: {
+                type: String,
 
-        lowStockThreshold: {
-            type: Number,
-            min: [
-                0,
-                "Low stock threshold cannot be negative",
-            ],
-            default: 5,
-            validate: {
-                validator: Number.isInteger,
-                message:
-                    "Low stock threshold must be a whole number",
+                required: [
+                    true,
+                    "Product slug is required",
+                ],
+
+                unique: true,
+
+                lowercase: true,
+
+                trim: true,
             },
-        },
 
-        // ------------------------------------------------------
-        // IMAGES
-        // ------------------------------------------------------
+            description: {
+                type: String,
 
-        images: {
-            type: [String],
+                trim: true,
 
-            validate: {
-                validator: function (value) {
-                    return value.length <= 10;
+                default: "",
+            },
+
+            // ==================================================
+            // INTERNAL SHIPPING WEIGHT
+            // ==================================================
+
+            weight: {
+                type: Number,
+
+                required: true,
+
+                min: [
+                    1,
+                    "Product weight must be greater than 0 grams",
+                ],
+
+                validate: {
+                    validator:
+                        Number.isInteger,
+
+                    message:
+                        "Product weight must be a whole number of grams",
                 },
 
-                message:
-                    "Exceeds the limit of 10 images",
+                default: 100,
             },
 
-            default: [],
-        },
+            // --------------------------------------------------
+            // ORIGINAL / MRP PRICE
+            // --------------------------------------------------
 
-        // ------------------------------------------------------
-        // GENERAL PRODUCT OPTIONS
-        // ------------------------------------------------------
+            originalPrice: {
+                type: Number,
 
-        options: {
-            type: [
-                productOptionSchema,
+                min: [
+                    0,
+                    "Original price cannot be negative",
+                ],
+
+                default: null,
+            },
+
+            // --------------------------------------------------
+            // CURRENT SELLING PRICE
+            // --------------------------------------------------
+
+            price: {
+                type: Number,
+
+                min: [
+                    0,
+                    "Price cannot be negative",
+                ],
+
+                default: null,
+            },
+
+            // --------------------------------------------------
+            // PRICING TYPE
+            // --------------------------------------------------
+
+            pricingType: {
+                type: String,
+
+                enum: [
+                    "fixed",
+                    "variants",
+                ],
+
+                default: "fixed",
+            },
+
+            // ==================================================
+            // INVENTORY
+            //
+            // IMPORTANT:
+            //
+            // These fields are intentionally kept.
+            //
+            // ProductForm no longer manages them.
+            //
+            // They are used by the separate inventory/order
+            // system and payment verification.
+            // ==================================================
+
+            stock: {
+                type: Number,
+
+                min: [
+                    0,
+                    "Product stock cannot be negative",
+                ],
+
+                default: 0,
+
+                validate: {
+                    validator:
+                        Number.isInteger,
+
+                    message:
+                        "Product stock must be a whole number",
+                },
+            },
+
+            lowStockThreshold: {
+                type: Number,
+
+                min: [
+                    0,
+                    "Low stock threshold cannot be negative",
+                ],
+
+                default: 5,
+
+                validate: {
+                    validator:
+                        Number.isInteger,
+
+                    message:
+                        "Low stock threshold must be a whole number",
+                },
+            },
+
+            // --------------------------------------------------
+            // IMAGES
+            // --------------------------------------------------
+
+            images: {
+                type: [String],
+
+                validate: {
+                    validator:
+                        function (
+                            value
+                        ) {
+                            return (
+                                value.length <=
+                                10
+                            );
+                        },
+
+                    message:
+                        "Exceeds the limit of 10 images",
+                },
+
+                default: [],
+            },
+
+            // --------------------------------------------------
+            // GENERAL PRODUCT OPTIONS
+            // --------------------------------------------------
+
+            options: {
+                type: [
+                    productOptionSchema,
+                ],
+
+                default: [],
+            },
+
+            // --------------------------------------------------
+            // CUSTOMER ORDER OPTIONS
+            // --------------------------------------------------
+
+            orderSelections: {
+                type: [
+                    productOrderSelectionSchema,
+                ],
+
+                default: [],
+            },
+
+            // --------------------------------------------------
+            // PRICE + INVENTORY VARIANTS
+            // --------------------------------------------------
+
+            variants: {
+                type: [
+                    productVariantSchema,
+                ],
+
+                default: [],
+            },
+
+            // ==================================================
+            // RELATED PRODUCTS
+            //
+            // Stores references to other Product documents.
+            //
+            // Example:
+            //
+            // relatedProducts: [
+            //     productId1,
+            //     productId2,
+            // ]
+            //
+            // The same product cannot appear twice.
+            // ==================================================
+
+            relatedProducts: [
+                {
+                    type:
+                        mongoose.Schema.Types.ObjectId,
+
+                    ref: "Product",
+                },
             ],
-            default: [],
+
+            // --------------------------------------------------
+            // STATUS
+            // --------------------------------------------------
+
+            status: {
+                type: String,
+
+                enum: [
+                    "active",
+                    "inactive",
+                ],
+
+                default: "active",
+            },
+
+            // --------------------------------------------------
+            // FEATURED
+            // --------------------------------------------------
+
+            featured: {
+                type: Boolean,
+
+                default: false,
+            },
         },
+        {
+            timestamps: true,
+        }
+    );
 
-        // ------------------------------------------------------
-        // CUSTOMER ORDER OPTIONS
-        // ------------------------------------------------------
+// ============================================================
+// RELATED PRODUCTS INDEX
+//
+// Helps queries involving related products.
+//
+// Not unique because multiple products can reference the
+// same related product.
+// ============================================================
 
-        orderSelections: {
-            type: [
-                productOrderSelectionSchema,
-            ],
-            default: [],
-        },
-
-        // ------------------------------------------------------
-        // PRICE + STOCK VARIANTS
-        // ------------------------------------------------------
-
-        variants: {
-            type: [
-                productVariantSchema,
-            ],
-            default: [],
-        },
-
-        // ------------------------------------------------------
-        // STATUS
-        // ------------------------------------------------------
-
-        status: {
-            type: String,
-            enum: [
-                "active",
-                "inactive",
-            ],
-            default: "active",
-        },
-
-        // ------------------------------------------------------
-        // FEATURED
-        // ------------------------------------------------------
-
-        featured: {
-            type: Boolean,
-            default: false,
-        },
-    },
-    {
-        timestamps: true,
-    }
-);
+productSchema.index({
+    relatedProducts: 1,
+});
 
 // ============================================================
 // EXPORT MODEL

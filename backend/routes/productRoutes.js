@@ -17,7 +17,8 @@ import {
     upload,
 } from "../middleware/uploadMiddleware.js";
 
-const router = express.Router();
+const router =
+    express.Router();
 
 // ============================================================
 // GET ALL PRODUCTS
@@ -31,11 +32,14 @@ router
     )
     .post(
         authenticateUser,
+
         upload.array(
             "images",
             10
         ),
+
         requireAdmin,
+
         createProduct
     );
 
@@ -50,16 +54,21 @@ router
     )
     .put(
         authenticateUser,
+
         upload.array(
             "images",
             10
         ),
+
         requireAdmin,
+
         updateProduct
     )
     .delete(
         authenticateUser,
+
         requireAdmin,
+
         deleteProduct
     );
 

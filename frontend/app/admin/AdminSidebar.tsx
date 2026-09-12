@@ -23,6 +23,7 @@ const navGroups = [
     items: [
       { name: "Categories", href: "/admin/categories" },
       { name: "Products", href: "/admin/products" },
+      { name: "Stock", href: "/admin/stock" },
     ],
   },
   {
