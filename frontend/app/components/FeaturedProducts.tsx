@@ -307,33 +307,7 @@ const ProductCard = memo(
             </span>
           )}
 
-          {/* FEATURED BADGE */}
-          {product.featured && (
-            <span
-              className="
-                absolute
-                right-3
-                top-3
-                z-10
-                rounded-[7px]
-                bg-[#B9954F]
-                px-2.5
-                py-1.5
-                text-[8px]
-                font-extrabold
-                uppercase
-                tracking-[0.1em]
-                text-white
-                shadow-sm
-                sm:right-3.5
-                sm:top-3.5
-                sm:text-[9px]
-              "
-            >
-              Featured
-            </span>
-          )}
-
+        
           {/* DISCOUNT */}
           {originalPrice && typeof product.price === "number" && (
             <span
@@ -386,22 +360,7 @@ const ProductCard = memo(
             {product.name}
           </h3>
 
-          <p
-            className="
-              mt-1.5
-              line-clamp-1
-              min-h-[16px]
-              text-[10px]
-              leading-4
-              text-[#64748B]
-              sm:text-xs
-              sm:leading-5
-            "
-          >
-            {product.description?.trim() ||
-              "Custom printing available"}
-          </p>
-
+        
           {/* PRICE */}
           <div
             className="
