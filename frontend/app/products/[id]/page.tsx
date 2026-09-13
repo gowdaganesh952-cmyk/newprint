@@ -10,7 +10,8 @@ import {
 
 import Image from "next/image";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 
 import Navbar from "@/app/components/Navbar";
 import { useApi } from "@/app/lib/api";
@@ -380,6 +381,8 @@ ProductDetailSkeleton.displayName = "ProductDetailSkeleton";
 
 export default function ProductDetailPage() {
   const params = useParams();
+  const router = useRouter();
+  const { isSignedIn, isLoaded: isAuthLoaded } = useAuth();
 
   const identifier = useMemo(() => {
     const value = params?.id;
@@ -992,6 +995,15 @@ export default function ProductDetailPage() {
   // ==========================================================
 
   const handleAddToCart = useCallback(async () => {
+    // Wait until auth state is loaded before proceeding
+    if (!isAuthLoaded) return;
+
+    // Redirect to login if user isn't signed in
+    if (!isSignedIn) {
+      router.push("/sign-in");
+      return;
+    }
+
     if (!product || !isAvailable || isAddingToCart) return;
     if (!validateSelections()) return;
 
@@ -1035,6 +1047,9 @@ export default function ProductDetailPage() {
       setIsAddingToCart(false);
     }
   }, [
+    isAuthLoaded,
+    isSignedIn,
+    router,
     product,
     isAvailable,
     isAddingToCart,
@@ -1586,10 +1601,12 @@ export default function ProductDetailPage() {
                     type="button"
                     onClick={handleAddToCart}
                     disabled={
+                      !isAuthLoaded ||
                       isAddingToCart ||
-                      !hasSelectedVariant ||
-                      isCurrentSelectionOutOfStock ||
-                      remainingStock <= 0
+                      (isSignedIn &&
+                        (!hasSelectedVariant ||
+                          isCurrentSelectionOutOfStock ||
+                          remainingStock <= 0))
                     }
                     className={`flex h-14 w-full items-center justify-center gap-2 rounded-[9px] px-5 text-base font-extrabold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${
                       addedSuccess ? "bg-[#16A34A]" : "bg-[#0A1B2E] hover:bg-[#142C46]"
@@ -1605,6 +1622,10 @@ export default function ProductDetailPage() {
                         <CheckIcon />
                         Added to Cart
                       </>
+                    ) : !isAuthLoaded ? (
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    ) : !isSignedIn ? (
+                      "Login to Add to Cart"
                     ) : !hasSelectedVariant ? (
                       "Select Options"
                     ) : isCurrentSelectionOutOfStock ? (
@@ -1834,10 +1855,12 @@ export default function ProductDetailPage() {
               type="button"
               onClick={handleAddToCart}
               disabled={
+                !isAuthLoaded ||
                 isAddingToCart ||
-                !hasSelectedVariant ||
-                isCurrentSelectionOutOfStock ||
-                remainingStock <= 0
+                (isSignedIn &&
+                  (!hasSelectedVariant ||
+                    isCurrentSelectionOutOfStock ||
+                    remainingStock <= 0))
               }
               className={`flex h-12 min-w-[142px] shrink-0 items-center justify-center gap-2 rounded-[9px] px-3 text-xs font-extrabold text-white transition-colors duration-150 active:bg-[#081827] disabled:cursor-not-allowed disabled:opacity-60 ${
                 addedSuccess ? "bg-[#16A34A]" : "bg-[#0A1B2E]"
@@ -1853,6 +1876,10 @@ export default function ProductDetailPage() {
                   <CheckIcon />
                   Added
                 </>
+              ) : !isAuthLoaded ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : !isSignedIn ? (
+                "Login to Add"
               ) : !hasSelectedVariant ? (
                 "Select Options"
               ) : isCurrentSelectionOutOfStock ? (
