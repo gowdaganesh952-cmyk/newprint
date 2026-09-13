@@ -2931,9 +2931,9 @@ export default function ProductDetailPage() {
             onClick={closeImageViewer}
             aria-label="Close image viewer"
             title="Close image viewer"
-            className="absolute right-3 top-3 z-[3] flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-black/60 text-3xl font-light leading-none text-white shadow-lg transition-colors duration-150 hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] sm:right-6 sm:top-6"
+            className="absolute right-3 top-3 z-[999] flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-white/70 bg-[#07111F] text-[30px] font-semibold leading-none text-white opacity-100 shadow-[0_4px_18px_rgba(0,0,0,0.45)] transition-all duration-150 hover:scale-105 hover:bg-[#B9954F] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] sm:right-6 sm:top-6"
           >
-            <span aria-hidden="true" className="-mt-0.5">×</span>
+            <span aria-hidden="true" className="block -mt-1">×</span>
           </button>
 
           <div
