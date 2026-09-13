@@ -523,6 +523,9 @@ export default function ProductDetailPage() {
   const [activeImageIndex, setActiveImageIndex] =
     useState(0);
 
+  const [isImageViewerOpen, setIsImageViewerOpen] =
+    useState(false);
+
   const [selections, setSelections] =
     useState<
       Record<string, string>
@@ -1310,6 +1313,53 @@ export default function ProductDetailPage() {
     ]);
 
   // ==========================================================
+  // IMAGE VIEWER
+  // ==========================================================
+
+  const openImageViewer = useCallback(() => {
+    setIsImageViewerOpen(true);
+  }, []);
+
+  const closeImageViewer = useCallback(() => {
+    setIsImageViewerOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isImageViewerOpen) {
+      return;
+    }
+
+    const handleViewerKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeImageViewer();
+      }
+
+      if (hasMultipleImages && event.key === "ArrowLeft") {
+        showPreviousImage();
+      }
+
+      if (hasMultipleImages && event.key === "ArrowRight") {
+        showNextImage();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleViewerKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleViewerKeyDown);
+    };
+  }, [
+    isImageViewerOpen,
+    hasMultipleImages,
+    closeImageViewer,
+    showPreviousImage,
+    showNextImage,
+  ]);
+
+  // ==========================================================
   // KEYBOARD IMAGE NAVIGATION
   // ==========================================================
 
@@ -1966,7 +2016,15 @@ export default function ProductDetailPage() {
             ================================================= */}
 
             <section className="min-w-0">
-              <div className="group relative aspect-square w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white shadow-[0_4px_20px_-16px_rgba(10,27,46,0.3)]">
+              <div
+                className="group relative aspect-square w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-white shadow-[0_4px_20px_-16px_rgba(10,27,46,0.3)]"
+              >
+                <button
+                  type="button"
+                  onClick={openImageViewer}
+                  aria-label="Open product image"
+                  className="absolute inset-0 z-[1] cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#B9954F]"
+                />
 
                 <Image
                   src={
@@ -2001,6 +2059,7 @@ export default function ProductDetailPage() {
                       aria-label="Previous image"
                       className="
                         absolute
+                        z-[2]
                         left-2
                         top-1/2
                         flex
@@ -2035,6 +2094,7 @@ export default function ProductDetailPage() {
                       aria-label="Next image"
                       className="
                         absolute
+                        z-[2]
                         right-2
                         top-1/2
                         flex
@@ -2848,6 +2908,69 @@ export default function ProductDetailPage() {
           )}
         </div>
       </main>
+
+      {/* ========================================================
+          FULLSCREEN IMAGE VIEWER
+      ======================================================== */}
+
+      {isImageViewerOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${product.name} image viewer`}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#07111F]/95 p-3 backdrop-blur-sm sm:p-6"
+          onClick={closeImageViewer}
+        >
+          <button
+            type="button"
+            onClick={closeImageViewer}
+            aria-label="Close image viewer"
+            className="absolute right-3 top-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-2xl leading-none text-white transition-colors duration-150 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] sm:right-6 sm:top-6"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+
+          <div
+            className="relative flex h-full w-full items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Image
+              src={activeImage}
+              alt={product.name}
+              fill
+              priority
+              sizes="100vw"
+              className="object-contain p-10 sm:p-14"
+            />
+
+            {hasMultipleImages && (
+              <>
+                <button
+                  type="button"
+                  onClick={showPreviousImage}
+                  aria-label="Previous image"
+                  className="absolute left-1 top-1/2 z-[2] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors duration-150 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] sm:left-3 sm:h-12 sm:w-12"
+                >
+                  <ChevronLeftIcon />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={showNextImage}
+                  aria-label="Next image"
+                  className="absolute right-1 top-1/2 z-[2] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors duration-150 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B9954F] sm:right-3 sm:h-12 sm:w-12"
+                >
+                  <ChevronRightIcon />
+                </button>
+
+                <div className="absolute bottom-3 left-1/2 z-[2] -translate-x-1/2 rounded-full bg-black/50 px-3 py-1.5 text-[11px] font-bold text-white">
+                  {safeImageIndex + 1} / {productImages.length}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ========================================================
           MOBILE STICKY ADD TO CART
