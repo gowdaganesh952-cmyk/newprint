@@ -6,7 +6,6 @@ import Footer from "../components/Footer";
 /* ============================================================
 WHATSAPP
 ============================================================ */
-
 const WHATSAPP_NUMBER = "917406925565";
 
 const WHATSAPP_MESSAGE =
