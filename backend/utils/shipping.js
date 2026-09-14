@@ -1,46 +1,36 @@
+
 /* ============================================================
    NEW PRINT SHIPPING CALCULATOR
 ============================================================ */
 
 /*
- * IMPORTANT
- *
- * This is the SINGLE shipping calculation used
- * by the order/payment backend.
- *
- * Frontend NEVER decides shipping.
+ * SINGLE shipping calculation used by the backend.
  *
  * Product.weight is stored in grams.
  *
- * ------------------------------------------------------------
+ * SHIPPING RULE
  *
- * CURRENT SHIPPING RULE
- *
- * First 500 grams       = ₹45
- *
+ * First 500 grams       = ₹15
  * Every additional
  * 500 grams             = ₹20
  *
  * Examples:
  *
- * 100g  -> ₹45
- * 300g  -> ₹45
- * 500g  -> ₹45
- * 501g  -> ₹65
- * 900g  -> ₹65
- * 1000g -> ₹65
- * 1001g -> ₹85
+ * 100g  -> ₹15
+ * 300g  -> ₹15
+ * 500g  -> ₹15
+ * 501g  -> ₹35
+ * 900g  -> ₹35
+ * 1000g -> ₹35
+ * 1001g -> ₹55
  *
- * ------------------------------------------------------------
+ * Example:
  *
- * Your current screenshot:
- *
- * Product = ₹349
+ * Product = ₹1
  * Weight <= 500g
  *
- * Shipping = ₹45
- *
- * Total = ₹394
+ * Shipping = ₹15
+ * Total = ₹16
  */
 
 /* ============================================================
@@ -55,8 +45,10 @@ export const SHIPPING_CONFIG = {
 
     /*
      * First slab price.
+     *
+     * FIXED: ₹45 -> ₹15
      */
-    baseFee: 45,
+    baseFee: 15,
 
     /*
      * Size of every additional slab.
@@ -73,9 +65,7 @@ export const SHIPPING_CONFIG = {
    ROUND MONEY
 ============================================================ */
 
-export function roundMoney(
-    amount
-) {
+export function roundMoney(amount) {
     return (
         Math.round(
             Number(amount) * 100
@@ -87,28 +77,21 @@ export function roundMoney(
    CALCULATE SHIPPING FROM WEIGHT
 ============================================================ */
 
-export function calculateShippingFee(
-    totalWeightGrams
-) {
-    const weight =
-        Number(
-            totalWeightGrams
-        );
+export function calculateShippingFee(totalWeightGrams) {
+    const weight = Number(totalWeightGrams);
 
     /*
      * Empty / invalid cart.
      */
     if (
-        !Number.isFinite(
-            weight
-        ) ||
+        !Number.isFinite(weight) ||
         weight <= 0
     ) {
         return 0;
     }
 
     /*
-     * First 500g = ₹45.
+     * First 500g = ₹15.
      */
     let shippingFee =
         SHIPPING_CONFIG.baseFee;
@@ -126,9 +109,7 @@ export function calculateShippingFee(
     /*
      * Additional slabs.
      */
-    if (
-        remainingWeight > 0
-    ) {
+    if (remainingWeight > 0) {
         const additionalSlabs =
             Math.ceil(
                 remainingWeight /
@@ -140,45 +121,20 @@ export function calculateShippingFee(
             SHIPPING_CONFIG.additionalFee;
     }
 
-    return roundMoney(
-        shippingFee
-    );
+    return roundMoney(shippingFee);
 }
 
 /* ============================================================
    CALCULATE TOTAL CART WEIGHT
 ============================================================ */
 
-/*
- * items must contain:
- *
- * productWeight
- * quantity
- *
- * Example:
- *
- * productWeight = 300
- * quantity = 2
- *
- * total = 600g
- */
-
-export function calculateCartWeight(
-    items
-) {
-    if (
-        !Array.isArray(
-            items
-        )
-    ) {
+export function calculateCartWeight(items) {
+    if (!Array.isArray(items)) {
         return 0;
     }
 
     return items.reduce(
-        (
-            total,
-            item
-        ) => {
+        (total, item) => {
             const weight =
                 Number(
                     item?.productWeight
@@ -190,18 +146,14 @@ export function calculateCartWeight(
                 );
 
             if (
-                !Number.isFinite(
-                    weight
-                ) ||
+                !Number.isFinite(weight) ||
                 weight <= 0
             ) {
                 return total;
             }
 
             if (
-                !Number.isInteger(
-                    quantity
-                ) ||
+                !Number.isInteger(quantity) ||
                 quantity < 1
             ) {
                 return total;
@@ -209,8 +161,7 @@ export function calculateCartWeight(
 
             return (
                 total +
-                weight *
-                    quantity
+                weight * quantity
             );
         },
         0
@@ -221,13 +172,9 @@ export function calculateCartWeight(
    CALCULATE CART SHIPPING
 ============================================================ */
 
-export function calculateCartShipping(
-    items
-) {
+export function calculateCartShipping(items) {
     const totalWeight =
-        calculateCartWeight(
-            items
-        );
+        calculateCartWeight(items);
 
     const shippingCharge =
         calculateShippingFee(
@@ -236,7 +183,6 @@ export function calculateCartShipping(
 
     return {
         totalWeight,
-
         shippingCharge,
     };
 }
