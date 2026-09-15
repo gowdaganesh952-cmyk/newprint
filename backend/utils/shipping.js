@@ -14,6 +14,11 @@
  * Every additional
  * 500 grams             = ₹20
  *
+ * MAXIMUM SHIPPING      = ₹100
+ *
+ * If calculated shipping goes above ₹100,
+ * automatically reduce it to ₹100.
+ *
  * Examples:
  *
  * 100g  -> ₹15
@@ -24,13 +29,13 @@
  * 1000g -> ₹35
  * 1001g -> ₹55
  *
- * Example:
+ * Maximum:
  *
- * Product = ₹1
- * Weight <= 500g
+ * Calculated ₹115 -> ₹100
+ * Calculated ₹135 -> ₹100
+ * Calculated ₹500 -> ₹100
  *
- * Shipping = ₹15
- * Total = ₹16
+ * Shipping will NEVER exceed ₹100.
  */
 
 /* ============================================================
@@ -45,8 +50,6 @@ export const SHIPPING_CONFIG = {
 
     /*
      * First slab price.
-     *
-     * FIXED: ₹45 -> ₹15
      */
     baseFee: 15,
 
@@ -59,6 +62,14 @@ export const SHIPPING_CONFIG = {
      * Price for every additional slab.
      */
     additionalFee: 20,
+
+    /*
+     * Maximum shipping charge.
+     *
+     * IMPORTANT:
+     * Shipping can never go above ₹100.
+     */
+    maxShippingFee: 100,
 };
 
 /* ============================================================
@@ -121,6 +132,27 @@ export function calculateShippingFee(totalWeightGrams) {
             SHIPPING_CONFIG.additionalFee;
     }
 
+    /*
+     * ========================================================
+     * MAXIMUM SHIPPING LIMIT
+     * ========================================================
+     *
+     * If calculated shipping is more than ₹100,
+     * reduce it to exactly ₹100.
+     *
+     * Any amount above ₹100 is capped.
+     */
+    shippingFee =
+        Math.min(
+            shippingFee,
+            SHIPPING_CONFIG.maxShippingFee
+        );
+
+    /*
+     * Return final shipping charge.
+     *
+     * Maximum possible return value = ₹100.
+     */
     return roundMoney(shippingFee);
 }
 
